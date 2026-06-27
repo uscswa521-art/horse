@@ -11,8 +11,10 @@
 擋。如果長期攞唔到資料, 可考慮加 residential proxy (見 README)。
 """
 import json
+import os
 import re
 import urllib.request
+from html import unescape
 from dataclasses import dataclass, field
 from math import asin, cos, radians, sin, sqrt
 from typing import Iterable, Optional
@@ -21,6 +23,11 @@ UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
+
+# 用唔用 Scrapling 嘅隱身瀏覽器 (StealthyFetcher) 去破反爬蟲。
+# GitHub Actions 預設開 (USE_STEALTH=1)。設 0 就用普通 urllib。
+USE_STEALTH = os.environ.get("USE_STEALTH", "1").lower() not in ("0", "false", "no", "")
+DEBUG = bool(os.environ.get("DEBUG"))
 
 
 # ── 資料模型 / Data model ──────────────────────────────────────────────────
@@ -52,7 +59,7 @@ class Listing:
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
-def fetch(url: str, timeout: int = 30, headers: dict = None) -> str:
+def _fetch_urllib(url: str, timeout: int = 30, headers: dict = None) -> str:
     h = {
         "User-Agent": UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -64,6 +71,35 @@ def fetch(url: str, timeout: int = 30, headers: dict = None) -> str:
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         return resp.read().decode(charset, errors="replace")
+
+
+def _fetch_stealth(url: str, timeout: int = 60) -> str:
+    """用 Scrapling 隱身瀏覽器攞 rendered HTML, 會自動試破 Cloudflare。"""
+    from scrapling.fetchers import StealthyFetcher  # 延遲 import, 冇裝都唔會即炸
+    page = StealthyFetcher.fetch(
+        url,
+        headless=True,
+        network_idle=True,
+        solve_cloudflare=True,
+        google_search=False,
+        timeout=timeout * 1000,
+    )
+    html = getattr(page, "html_content", None) or getattr(page, "body", "") or ""
+    if DEBUG:
+        print(f"[stealth] {url} status={getattr(page, 'status', '?')} "
+              f"htmllen={len(html)}")
+    return html
+
+
+def fetch(url: str, timeout: int = 30, headers: dict = None) -> str:
+    """預設行隱身瀏覽器; 失敗就回落普通 urllib。"""
+    if USE_STEALTH:
+        try:
+            return _fetch_stealth(url, max(timeout, 60))
+        except Exception as e:  # noqa: BLE001
+            if DEBUG:
+                print(f"[stealth] {url} 失敗, 回落 urllib: {type(e).__name__}: {e}")
+    return _fetch_urllib(url, timeout, headers)
 
 
 # ── JSON 區塊抽取 / Extract JSON blobs from HTML ──────────────────────────
@@ -91,6 +127,18 @@ def _iter_json_blobs(html: str) -> Iterable[dict]:
                 yield json.loads(txt)
             except (json.JSONDecodeError, ValueError):
                 continue
+    # API 經瀏覽器返嚟時, JSON 可能淨係包喺 <pre> 入面, 或者成個 body 就係 JSON
+    for m in re.finditer(r"<pre[^>]*>(.*?)</pre>", html, re.DOTALL | re.IGNORECASE):
+        try:
+            yield json.loads(unescape(m.group(1)).strip())
+        except (json.JSONDecodeError, ValueError):
+            continue
+    stripped = html.strip()
+    if stripped[:1] in "{[":
+        try:
+            yield json.loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            pass
 
 
 # ── 數字 normalise ─────────────────────────────────────────────────────────
@@ -197,26 +245,19 @@ def extract_listings(html: str, source: str, base_url: str = "") -> list:
 
 
 # ── 各個來源 / Sources ─────────────────────────────────────────────────────
-# 每個來源 = (名, function -> [Listing])。加新網站只要加多個 function。
-def src_rentals_ca(cfg) -> list:
-    city = cfg["city"].lower().replace(" ", "-")
-    url = (f"https://rentals.ca/{city}?beds={cfg['bedrooms_min']}"
-           f"&baths={cfg['bathrooms_min']}&p_h={cfg['price_max']}")
+# 用隱身瀏覽器(StealthyFetcher)攞 rendered 頁面, 再用通用 JSON 抽取器搵筍盤。
+# 加新網站只要喺 SOURCES 加多一個 function。
+def _page_source(name: str, url: str, base: str) -> list:
     html = fetch(url)
-    return extract_listings(html, "rentals.ca", "https://rentals.ca")
+    listings = extract_listings(html, name, base)
+    if DEBUG:
+        print(f"[{name}] htmllen={len(html)} 抽到={len(listings)}")
+    return listings
 
 
 def src_rentfaster(cfg) -> list:
-    """
-    RentFaster.ca — 有公開 JSON API, 唔使瀏覽器, 最有機會由 datacenter IP 攞到嘢。
-    注意: RentFaster 喺西岸(AB/BC)盤多, 安大略(Markham)盤可能比較少。
-    """
+    """RentFaster.ca — 有公開 JSON API。先試 API(經隱身瀏覽器), 唔得就試城市頁。"""
     base = "https://www.rentfaster.ca"
-    headers = {
-        "Referer": f"{base}/on/markham/rentals/",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-    }
     params = (
         "keywords=Markham"
         f"&beds={int(cfg['bedrooms_min'])}"
@@ -224,61 +265,65 @@ def src_rentfaster(cfg) -> list:
         f"&price_range_adv%5Bto%5D={int(cfg['price_max'])}"
         "&novalified=1&page=1"
     )
-    raw = fetch(f"{base}/api/search.php?{params}", headers=headers)
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        # 攞到 HTML (多數係 Cloudflare 攔截頁) 而唔係 JSON
-        raise RuntimeError("rentfaster 回傳唔係 JSON (可能被攔截)")
-    out = []
-    for it in (data.get("listings") or []):
-        if not isinstance(it, dict):
-            continue
-        link = it.get("link") or it.get("url") or ""
-        out.append(Listing(
-            source="rentfaster.ca",
-            title=str(it.get("title") or it.get("type") or "RentFaster 盤")[:200],
-            price=_num(it.get("price")),
-            bedrooms=_num(it.get("bedrooms") or it.get("Bedrooms")),
-            bathrooms=_num(it.get("bathrooms") or it.get("Bathrooms") or it.get("baths")),
-            address=str(it.get("address") or it.get("location") or it.get("city") or "")[:250],
-            url=(base + str(link)) if str(link).startswith("/") else str(link),
-            lat=_num(it.get("latitude")),
-            lng=_num(it.get("longitude")),
-            raw_keywords=json.dumps(it, ensure_ascii=False)[:500],
-        ))
-    return out
+    html = fetch(f"{base}/api/search.php?{params}")
+    listings = []
+    for blob in _iter_json_blobs(html):
+        arr = blob.get("listings") if isinstance(blob, dict) else None
+        for it in (arr or []):
+            if not isinstance(it, dict):
+                continue
+            link = it.get("link") or it.get("url") or ""
+            listings.append(Listing(
+                source="rentfaster.ca",
+                title=str(it.get("title") or it.get("type") or "RentFaster 盤")[:200],
+                price=_num(it.get("price")),
+                bedrooms=_num(it.get("bedrooms") or it.get("Bedrooms")),
+                bathrooms=_num(it.get("bathrooms") or it.get("Bathrooms")
+                               or it.get("baths")),
+                address=str(it.get("address") or it.get("location")
+                            or it.get("city") or "")[:250],
+                url=(base + str(link)) if str(link).startswith("/") else str(link),
+                lat=_num(it.get("latitude")),
+                lng=_num(it.get("longitude")),
+                raw_keywords=json.dumps(it, ensure_ascii=False)[:500],
+            ))
+    if not listings:  # 回落: rendered 城市頁
+        listings = _page_source("rentfaster.ca", f"{base}/on/markham/rentals/", base)
+    if DEBUG:
+        print(f"[rentfaster.ca] api_htmllen={len(html)} 抽到={len(listings)}")
+    return listings
+
+
+def src_rentals_ca(cfg) -> list:
+    url = (f"https://rentals.ca/markham?beds={cfg['bedrooms_min']}"
+           f"&baths={cfg['bathrooms_min']}&p_h={cfg['price_max']}")
+    return _page_source("rentals.ca", url, "https://rentals.ca")
 
 
 def src_kijiji(cfg) -> list:
-    # Kijiji apartments/condos for rent in Markham
     url = ("https://www.kijiji.ca/b-for-rent/markham/"
            f"page-1/c30349001l1700274?ad=offering&price=__{cfg['price_max']}")
-    html = fetch(url)
-    return extract_listings(html, "kijiji.ca", "https://www.kijiji.ca")
+    return _page_source("kijiji.ca", url, "https://www.kijiji.ca")
 
 
 def src_zumper(cfg) -> list:
-    city = cfg["city"].lower().replace(" ", "-")
-    url = f"https://www.zumper.com/apartments-for-rent/{city}-on"
-    html = fetch(url)
-    return extract_listings(html, "zumper.com", "https://www.zumper.com")
+    return _page_source("zumper.com",
+                        "https://www.zumper.com/apartments-for-rent/markham-on",
+                        "https://www.zumper.com")
 
 
 def src_padmapper(cfg) -> list:
-    city = cfg["city"].lower().replace(" ", "-")
-    url = f"https://www.padmapper.com/apartments/{city}-on"
-    html = fetch(url)
-    return extract_listings(html, "padmapper.com", "https://www.padmapper.com")
+    return _page_source("padmapper.com",
+                        "https://www.padmapper.com/apartments/markham-on",
+                        "https://www.padmapper.com")
 
 
-# 排先嘅最有機會由 datacenter IP 攞到資料。
-# rentals.ca / kijiji / zumper / padmapper 經實測由雲端伺服器多數被反爬蟲擋 (403/0),
-# 留住佢哋只係「有殺錯冇放過」, 主力係 rentfaster。
 SOURCES = [
     ("rentfaster.ca", src_rentfaster),
+    ("rentals.ca", src_rentals_ca),
     ("kijiji.ca", src_kijiji),
     ("zumper.com", src_zumper),
+    ("padmapper.com", src_padmapper),
 ]
 
 

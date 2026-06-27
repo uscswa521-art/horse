@@ -1,0 +1,4 @@
+# 搵屋爬蟲 / Property finder 依賴
+# 核心程式只用 Python 標準庫。
+# 隱身瀏覽器爬蟲 (破反爬蟲) 用 Scrapling — GitHub Actions 會自動裝。
+scrapling[fetchers]
