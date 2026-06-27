@@ -27,11 +27,11 @@ jobs:
 
       - name: 跑搵屋爬蟲
         env:
-          # ⚠️ 喺 repo Settings → Secrets and variables → Actions 加呢個 secret
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # token 可以放喺 secret TELEGRAM_BOT_TOKEN 或者簡寫 TG (兩個名都讀)
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.TG }}
           # chat id: 可以留空, 程式會自動偵測 (你要先同 bot 講過一句嘢);
-          # 想穩陣就加 secret TELEGRAM_CHAT_ID
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # 想穩陣就加 secret TELEGRAM_CHAT_ID 或者 TG_CHAT_ID
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
         run: python3 -m property_finder.finder
 
       - name: 記住已匯報嘅盤 (commit seen.json)
