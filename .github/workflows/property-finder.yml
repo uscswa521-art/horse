@@ -1,0 +1,47 @@
+name: 搵屋爬蟲 / Property Finder
+
+on:
+  schedule:
+    # 每 1 小時跑一次 (UTC)。即使冇新盤都會發匯報。
+    - cron: "0 * * * *"
+  workflow_dispatch: {}   # 都可以喺 Actions 頁面手動㩒一下試
+
+permissions:
+  contents: write   # 用嚟將 seen.json 寫返去, 避免重複匯報
+
+concurrency:
+  group: property-finder
+  cancel-in-progress: false
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/property-scraper-telegram-bot-zqy2vm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 跑搵屋爬蟲
+        env:
+          # ⚠️ 喺 repo Settings → Secrets and variables → Actions 加呢個 secret
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          # chat id: 可以留空, 程式會自動偵測 (你要先同 bot 講過一句嘢);
+          # 想穩陣就加 secret TELEGRAM_CHAT_ID
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 -m property_finder.finder
+
+      - name: 記住已匯報嘅盤 (commit seen.json)
+        run: |
+          git config user.name "property-finder-bot"
+          git config user.email "actions@github.com"
+          git add property_finder/state/seen.json
+          if git diff --cached --quiet; then
+            echo "seen.json 冇變, 唔使 commit"
+          else
+            git commit -m "chore: update seen listings [skip ci]"
+            git push
+          fi
