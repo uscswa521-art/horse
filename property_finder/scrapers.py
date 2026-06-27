@@ -52,12 +52,15 @@ class Listing:
 
 
 # ── HTTP ────────────────────────────────────────────────────────────────
-def fetch(url: str, timeout: int = 30) -> str:
-    req = urllib.request.Request(url, headers={
+def fetch(url: str, timeout: int = 30, headers: dict = None) -> str:
+    h = {
         "User-Agent": UA,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-CA,en;q=0.9,zh-HK;q=0.8",
-    })
+    }
+    if headers:
+        h.update(headers)
+    req = urllib.request.Request(url, headers=h)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         charset = resp.headers.get_content_charset() or "utf-8"
         return resp.read().decode(charset, errors="replace")
@@ -203,6 +206,50 @@ def src_rentals_ca(cfg) -> list:
     return extract_listings(html, "rentals.ca", "https://rentals.ca")
 
 
+def src_rentfaster(cfg) -> list:
+    """
+    RentFaster.ca — 有公開 JSON API, 唔使瀏覽器, 最有機會由 datacenter IP 攞到嘢。
+    注意: RentFaster 喺西岸(AB/BC)盤多, 安大略(Markham)盤可能比較少。
+    """
+    base = "https://www.rentfaster.ca"
+    headers = {
+        "Referer": f"{base}/on/markham/rentals/",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+    }
+    params = (
+        "keywords=Markham"
+        f"&beds={int(cfg['bedrooms_min'])}"
+        f"&price_range_adv%5Bfrom%5D={int(cfg['price_min'])}"
+        f"&price_range_adv%5Bto%5D={int(cfg['price_max'])}"
+        "&novalified=1&page=1"
+    )
+    raw = fetch(f"{base}/api/search.php?{params}", headers=headers)
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        # 攞到 HTML (多數係 Cloudflare 攔截頁) 而唔係 JSON
+        raise RuntimeError("rentfaster 回傳唔係 JSON (可能被攔截)")
+    out = []
+    for it in (data.get("listings") or []):
+        if not isinstance(it, dict):
+            continue
+        link = it.get("link") or it.get("url") or ""
+        out.append(Listing(
+            source="rentfaster.ca",
+            title=str(it.get("title") or it.get("type") or "RentFaster 盤")[:200],
+            price=_num(it.get("price")),
+            bedrooms=_num(it.get("bedrooms") or it.get("Bedrooms")),
+            bathrooms=_num(it.get("bathrooms") or it.get("Bathrooms") or it.get("baths")),
+            address=str(it.get("address") or it.get("location") or it.get("city") or "")[:250],
+            url=(base + str(link)) if str(link).startswith("/") else str(link),
+            lat=_num(it.get("latitude")),
+            lng=_num(it.get("longitude")),
+            raw_keywords=json.dumps(it, ensure_ascii=False)[:500],
+        ))
+    return out
+
+
 def src_kijiji(cfg) -> list:
     # Kijiji apartments/condos for rent in Markham
     url = ("https://www.kijiji.ca/b-for-rent/markham/"
@@ -225,11 +272,13 @@ def src_padmapper(cfg) -> list:
     return extract_listings(html, "padmapper.com", "https://www.padmapper.com")
 
 
+# 排先嘅最有機會由 datacenter IP 攞到資料。
+# rentals.ca / kijiji / zumper / padmapper 經實測由雲端伺服器多數被反爬蟲擋 (403/0),
+# 留住佢哋只係「有殺錯冇放過」, 主力係 rentfaster。
 SOURCES = [
-    ("rentals.ca", src_rentals_ca),
+    ("rentfaster.ca", src_rentfaster),
     ("kijiji.ca", src_kijiji),
     ("zumper.com", src_zumper),
-    ("padmapper.com", src_padmapper),
 ]
 
 
