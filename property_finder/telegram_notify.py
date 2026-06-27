@@ -13,12 +13,14 @@ API = "https://api.telegram.org/bot{token}/{method}"
 
 class Telegram:
     def __init__(self, token: str, chat_id: str = ""):
+        # 清走任何空白/換行 (貼 secret 時好易多咗, 會整壞 API 網址)
+        token = "".join(str(token or "").split())
         if not token:
             raise ValueError(
                 "冇 TELEGRAM_BOT_TOKEN! 請喺 GitHub repo secrets 加返。"
             )
         self.token = token
-        self.chat_id = str(chat_id) if chat_id else ""
+        self.chat_id = "".join(str(chat_id or "").split())
 
     # ── 低層 API ────────────────────────────────────────────────────────
     def _call(self, method: str, params: dict) -> dict:

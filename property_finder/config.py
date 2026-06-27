@@ -61,9 +61,10 @@ SEARCH = {
 # ⚠️ 唔好將 token 寫死喺 code 入面 / NEVER hardcode the token.
 #    GitHub Actions: 用 repo secret  TELEGRAM_BOT_TOKEN
 TELEGRAM = {
-    "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN", ""),
+    # .strip() 清走貼 token 時可能多咗嘅換行/空白 (control char 會整壞網址)
+    "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
     # 留空就會自動用 getUpdates 搵返你嘅 chat id (你只要同 bot 講過一句嘢)
-    "chat_id": os.environ.get("TELEGRAM_CHAT_ID", ""),
+    "chat_id": os.environ.get("TELEGRAM_CHAT_ID", "").strip(),
 }
 
 # 狀態檔 (記住邊啲盤匯報過, 避免重複)
