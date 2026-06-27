@@ -156,16 +156,22 @@ def _iter_json_blobs(html: str) -> Iterable[dict]:
 
 # ── 數字 normalise ─────────────────────────────────────────────────────────
 def _num(val) -> Optional[float]:
-    if val is None:
+    if val is None or isinstance(val, bool):
         return None
     if isinstance(val, (int, float)):
         return float(val)
+    if isinstance(val, dict):  # schema.org 成日包成 {"value": 2, ...}
+        return _num(val.get("value") or val.get("amount")
+                    or val.get("price") or val.get("@value"))
+    if isinstance(val, list):
+        return _num(val[0]) if val else None
     m = re.search(r"-?\d[\d,]*\.?\d*", str(val).replace(",", ""))
     return float(m.group()) if m else None
 
 
 _PRICE_KEYS = ("price", "rent", "askingprice", "monthlyrent", "amount", "value")
-_BED_KEYS = ("bedrooms", "beds", "numberofrooms", "bedroom", "bed")
+_BED_KEYS = ("bedrooms", "beds", "numberofbedrooms", "numberofrooms",
+             "bedroom", "bed")
 _BATH_KEYS = ("bathrooms", "baths", "bathroom", "bath", "numberofbathroomstotal")
 _ADDR_KEYS = ("address", "streetaddress", "formattedaddress", "location", "fulladdress")
 _URL_KEYS = ("url", "link", "detailurl", "permalink", "seourl", "canonicalurl")
@@ -194,10 +200,24 @@ def _flatten_addr(val) -> str:
     return ""
 
 
+def _price_of(d: dict) -> Optional[float]:
+    """攞價錢: 直接 price, 或者 schema.org 包喺 offers 入面。"""
+    p = _num(_get(d, _PRICE_KEYS))
+    if p:
+        return p
+    off = d.get("offers") or d.get("Offers")
+    if isinstance(off, list):
+        off = off[0] if off else None
+    if isinstance(off, dict):
+        return _num(off.get("price") or off.get("lowPrice")
+                    or off.get("priceSpecification"))
+    return None
+
+
 def _looks_like_listing(d: dict) -> bool:
     if not isinstance(d, dict):
         return False
-    has_price = _get(d, _PRICE_KEYS) is not None
+    has_price = _price_of(d) is not None
     has_room = _get(d, _BED_KEYS) is not None or _get(d, _BATH_KEYS) is not None
     has_id = _get(d, _ADDR_KEYS) is not None or _get(d, _URL_KEYS) is not None \
         or _get(d, _TITLE_KEYS) is not None
@@ -231,7 +251,7 @@ def _coerce(d: dict, source: str, base_url: str = "") -> Optional[Listing]:
     lst = Listing(
         source=source,
         title=str(title or "")[:200],
-        price=_num(_get(d, _PRICE_KEYS)),
+        price=_price_of(d),
         bedrooms=_num(_get(d, _BED_KEYS)),
         bathrooms=_num(_get(d, _BATH_KEYS)),
         address=addr[:250],
@@ -269,6 +289,13 @@ def _page_source(name: str, url: str, base: str) -> list:
                  ('__NEXT_DATA__', '__next_f', 'application/ld+json',
                   '"price"', '"bedrooms"', '"numberOfRooms"')}
         print(f"[{name}] htmllen={len(html)} 抽到={len(listings)} marks={marks}")
+        if not listings:  # 抽唔到時, 印一段 ld+json 樣本睇結構
+            for m in _JSON_SCRIPT_RE.finditer(html):
+                seg = m.group(1)
+                if any(t in seg for t in ('numberOfRooms', 'bedrooms',
+                                          'offers', 'numberOfBedrooms')):
+                    print(f"[{name}] ld+json樣本: {seg.strip()[:1200]}")
+                    break
     return listings
 
 
