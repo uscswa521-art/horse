@@ -31,31 +31,49 @@ class Telegram:
             return json.loads(resp.read().decode())
 
     # ── chat id 自動偵測 ────────────────────────────────────────────────
+    def whoami(self) -> str:
+        """印出 token 屬於邊個 bot (getMe), 方便確認你 message 啱咗個 bot。"""
+        try:
+            me = self._call("getMe", {}).get("result", {})
+            uname = me.get("username", "?")
+            print(f"[telegram] 呢個 token 屬於 bot: @{uname} (id={me.get('id')})")
+            return uname
+        except Exception as e:  # noqa: BLE001
+            print(f"[telegram] getMe 失敗 (token 可能錯/有多餘字元): {e}")
+            return ""
+
     def resolve_chat_id(self) -> str:
         """
         如果冇預設 chat_id, 用 getUpdates 攞返最近同 bot 傾過偈嘅人。
-        你只要喺 Telegram 開 @Foundhorse_bot 㩒 Start / 講一句嘢就得。
+        你只要喺 Telegram 開返 token 對應嗰個 bot, 㩒 Start / 講一句嘢就得。
         """
         if self.chat_id:
             return self.chat_id
+        uname = self.whoami()
         try:
             res = self._call("getUpdates", {"limit": 100})
         except Exception as e:  # noqa: BLE001
             print(f"[telegram] getUpdates 失敗: {e}")
             return ""
+        updates = res.get("result", [])
+        # message / channel_post / edited_message / my_chat_member 都試吓攞 chat id
         chat_ids = []
-        for upd in res.get("result", []):
-            msg = upd.get("message") or upd.get("channel_post") or {}
-            chat = msg.get("chat") or {}
+        for upd in updates:
+            obj = (upd.get("message") or upd.get("edited_message")
+                   or upd.get("channel_post") or upd.get("my_chat_member") or {})
+            chat = obj.get("chat") or {}
             if chat.get("id") is not None:
                 chat_ids.append(str(chat["id"]))
+        print(f"[telegram] getUpdates 收到 {len(updates)} 個 update, "
+              f"搵到 {len(set(chat_ids))} 個 chat")
         if chat_ids:
             self.chat_id = chat_ids[-1]  # 最近一個
             print(f"[telegram] 自動搵到 chat_id = {self.chat_id}")
         else:
             print(
-                "[telegram] 搵唔到 chat_id。請先喺 Telegram 同 @Foundhorse_bot "
-                "㩒 Start 再講一句嘢。"
+                f"[telegram] 搵唔到 chat_id! 你部 message 可能去咗第個 bot。"
+                f" 請喺 Telegram 開返 @{uname or 'Foundhorse_bot'} (token 對應嗰個),"
+                f" 㩒 Start 再講一句嘢, 然後再跑。"
             )
         return self.chat_id
 
