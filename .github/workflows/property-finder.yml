@@ -41,7 +41,17 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
           USE_STEALTH: "1"     # 用隱身瀏覽器
           DEBUG: "1"           # 印出每個來源攞到幾多 (調試用, 之後可以收返)
+          DUMP_DIR: "html_dump"  # 存低 rendered HTML 做 artifact (寫 parser 用)
         run: python3 -m property_finder.finder
+
+      - name: 上載 rendered HTML (調試用)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-dump
+          path: html_dump/
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: 記住已匯報嘅盤 (commit seen.json)
         run: |
