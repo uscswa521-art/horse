@@ -28,6 +28,19 @@ UA = (
 # GitHub Actions 預設開 (USE_STEALTH=1)。設 0 就用普通 urllib。
 USE_STEALTH = os.environ.get("USE_STEALTH", "1").lower() not in ("0", "false", "no", "")
 DEBUG = bool(os.environ.get("DEBUG"))
+# 設咗就會將每個網 rendered HTML 寫落呢個資料夾 (調試/寫 parser 用)
+DUMP_DIR = os.environ.get("DUMP_DIR")
+
+
+def _maybe_dump(name: str, html: str):
+    if not DUMP_DIR:
+        return
+    try:
+        os.makedirs(DUMP_DIR, exist_ok=True)
+        with open(os.path.join(DUMP_DIR, f"{name}.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ── 資料模型 / Data model ──────────────────────────────────────────────────
@@ -249,9 +262,13 @@ def extract_listings(html: str, source: str, base_url: str = "") -> list:
 # 加新網站只要喺 SOURCES 加多一個 function。
 def _page_source(name: str, url: str, base: str) -> list:
     html = fetch(url)
+    _maybe_dump(name, html)
     listings = extract_listings(html, name, base)
     if DEBUG:
-        print(f"[{name}] htmllen={len(html)} 抽到={len(listings)}")
+        marks = {k: html.count(k) for k in
+                 ('__NEXT_DATA__', '__next_f', 'application/ld+json',
+                  '"price"', '"bedrooms"', '"numberOfRooms"')}
+        print(f"[{name}] htmllen={len(html)} 抽到={len(listings)} marks={marks}")
     return listings
 
 
