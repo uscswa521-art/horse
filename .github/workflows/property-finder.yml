@@ -25,6 +25,13 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: 裝 Scrapling 隱身瀏覽器 (破反爬蟲)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install "scrapling[fetchers]"
+          # 下載隱身瀏覽器 (camoufox) + 需要嘅系統庫
+          scrapling install || python3 -m camoufox fetch || true
+
       - name: 跑搵屋爬蟲
         env:
           # token 可以放喺 secret TELEGRAM_BOT_TOKEN 或者簡寫 TG (兩個名都讀)
@@ -32,6 +39,8 @@ jobs:
           # chat id: 可以留空, 程式會自動偵測 (你要先同 bot 講過一句嘢);
           # 想穩陣就加 secret TELEGRAM_CHAT_ID 或者 TG_CHAT_ID
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || secrets.TG_CHAT_ID }}
+          USE_STEALTH: "1"     # 用隱身瀏覽器
+          DEBUG: "1"           # 印出每個來源攞到幾多 (調試用, 之後可以收返)
         run: python3 -m property_finder.finder
 
       - name: 記住已匯報嘅盤 (commit seen.json)
