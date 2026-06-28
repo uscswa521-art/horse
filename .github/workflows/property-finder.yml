@@ -2,8 +2,8 @@ name: 搵屋爬蟲 / Property Finder
 
 on:
   schedule:
-    # 每 1 小時跑一次 (UTC)。即使冇新盤都會發匯報。
-    - cron: "0 * * * *"
+    # 每 1 小時跑一次, 用 :27 而唔用 :00 — GitHub 喺整點最繁忙, 成日會延遲/跳過排程。
+    - cron: "27 * * * *"
   workflow_dispatch: {}   # 都可以喺 Actions 頁面手動㩒一下試
 
 permissions:
