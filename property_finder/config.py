@@ -36,22 +36,35 @@ SEARCH = {
     "price_max": _int("PRICE_MAX", 2800),
     "price_min": _int("PRICE_MIN", 0),
 
-    # 地點: 大班旅遊 Tai Pan Tours Head Office, Markham ON
-    # (South Town Centre Blvd / Clegg Rd 一帶, 近 Markham Town Square / Hwy 404)
+    # 地點: 大班旅遊 Tai Pan Tours Head Office
+    # 3621 Hwy 7 Suite 509, Markham, ON L3R 0G6 (Markham Town Centre 一帶)
     "city": os.environ.get("CITY", "Markham"),
-    "office_lat": _float("OFFICE_LAT", 43.8561),
-    "office_lng": _float("OFFICE_LNG", -79.3370),
-    # 距離公司幾遠以內先算符合 (km)。如果筍盤冇座標就唔會用呢個過濾。
-    "radius_km": _float("RADIUS_KM", 12.0),
+    "office_lat": _float("OFFICE_LAT", 43.8545),
+    "office_lng": _float("OFFICE_LNG", -79.3368),
+    # 只接受步行 10-15 分鐘 (約 1.5km 直線距離) 以內。
+    "radius_km": _float("RADIUS_KM", 1.5),
+    # 步行範圍好窄, 所以一定要有座標先計到距離; 冇座標嘅盤直接唔要 (=1)。
+    "require_coords": os.environ.get("REQUIRE_COORDS", "1").lower()
+    not in ("0", "false", "no", ""),
 
-    # 地點關鍵字 (如果筍盤冇座標, 用嚟粗略判斷係咪喺附近)
+    # 地點關鍵字 (淨係冇座標 + require_coords=0 嗰陣先用嚟粗略判斷)
     "location_keywords": [
         k.strip().lower()
         for k in os.environ.get(
             "LOCATION_KEYWORDS",
-            "markham,unionville,south town centre,cedarland,clegg,"
-            "warden,enterprise,downtown markham,markham town square,"
-            "l3r,l6g,l6c",
+            "south town centre,town centre blvd,cedarland,clegg,"
+            "enterprise blvd,downtown markham,riverlands,l3r 0g,l3r 9",
+        ).split(",")
+        if k.strip()
+    ],
+
+    # 唔要嘅盤 (地庫/basement 等), 個盤文字含到任何一個就剔走
+    "exclude_keywords": [
+        k.strip().lower()
+        for k in os.environ.get(
+            "EXCLUDE_KEYWORDS",
+            "basement,bsmt,b/t,地庫,地下室,半地庫,lower level,"
+            "walkout basement,walk-out basement,walkout bsmt",
         ).split(",")
         if k.strip()
     ],

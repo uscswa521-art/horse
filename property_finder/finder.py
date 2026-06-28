@@ -35,6 +35,11 @@ TORONTO_TZ = timezone(timedelta(hours=-4))  # America/Toronto (EDT, 夏令時)
 
 # ── 過濾 / Filtering ──────────────────────────────────────────────────────
 def matches(lst: "scrapers.Listing", cfg: dict) -> bool:
+    blob = lst.text_blob()
+    # 唔要地庫 / basement 等
+    if any(k in blob for k in cfg.get("exclude_keywords", [])):
+        return False
+
     if lst.bedrooms is not None:
         if lst.bedrooms < cfg["bedrooms_min"]:
             return False
@@ -47,12 +52,13 @@ def matches(lst: "scrapers.Listing", cfg: dict) -> bool:
         if lst.price > cfg["price_max"] or lst.price < cfg["price_min"]:
             return False
 
-    # 地點: 有座標就用距離, 冇就用關鍵字
+    # 地點: 步行範圍好窄, 一定要有座標先計到距離
     dist = scrapers.distance_km(
         lst.lat, lst.lng, cfg["office_lat"], cfg["office_lng"])
     if dist is not None:
         return dist <= cfg["radius_km"]
-    blob = lst.text_blob()
+    if cfg.get("require_coords"):
+        return False  # 冇座標 = 驗唔到步行距離 = 唔要
     return any(kw in blob for kw in cfg["location_keywords"])
 
 
@@ -145,7 +151,7 @@ def build_report(stamp, scanned_ok, errors, n_match, new_listings, cfg) -> str:
     head = (
         f"🕐 <b>搵屋匯報</b> {esc(stamp)} (Markham)\n"
         f"條件: 租 · {cfg['bedrooms_min']}房{cfg['bathrooms_min']}廁 · "
-        f"≤${cfg['price_max']:,}/月 · 近大班旅遊\n"
+        f"≤${cfg['price_max']:,}/月 · 步行{cfg['radius_km']:g}km內 · 無地庫\n"
         f"━━━━━━━━━━━━━━━"
     )
     if new_listings:
