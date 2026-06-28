@@ -2,8 +2,9 @@ name: 搵屋爬蟲 / Property Finder
 
 on:
   schedule:
-    # 每 1 小時跑一次, 用 :27 而唔用 :00 — GitHub 喺整點最繁忙, 成日會延遲/跳過排程。
-    - cron: "27 * * * *"
+    # 每 30 分鐘跑一次 (:13 同 :43), 用冷門時段避開整點塞車。
+    # 就算 GitHub 偶爾跳過其中一次, 都有另一次做保險, 唔會等成個鐘。
+    - cron: "13,43 * * * *"
   workflow_dispatch: {}   # 都可以喺 Actions 頁面手動㩒一下試
 
 permissions:
