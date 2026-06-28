@@ -77,8 +77,9 @@ TELEGRAM = {
     # .strip() 清走貼 token 時可能多咗嘅換行/空白 (control char 會整壞網址)
     "bot_token": os.environ.get("TELEGRAM_BOT_TOKEN", "").strip(),
     # chat_id: 已由實際運行偵測到並寫死, 確保長期穩定 (唔使靠 24 小時內有 message)。
-    # 想改/保密可改用環境變數 TELEGRAM_CHAT_ID 覆蓋。
-    "chat_id": os.environ.get("TELEGRAM_CHAT_ID", "278197406").strip(),
+    # 注意: workflow 就算冇 secret 都會將 env 設成空字串 "", 所以要用 `or` 而唔係
+    # get 嘅 default — 空字串要當冇設, 回落去下面寫死嗰個。
+    "chat_id": (os.environ.get("TELEGRAM_CHAT_ID", "").strip() or "278197406"),
 }
 
 # 狀態檔 (記住邊啲盤匯報過, 避免重複)
