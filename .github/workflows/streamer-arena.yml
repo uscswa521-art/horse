@@ -1,0 +1,50 @@
+name: 🎤 直播人潮 / Streamer Arena
+
+on:
+  schedule:
+    # 每 20 分鐘 (:07 / :27 / :47) — 用冷門分鐘避開整點塞車。
+    # ⚠️ 唔好改到太密: YouTube API 一日得 10,000 quota, 一次 search 食 100,
+    #    每 20 分鐘 = 72 次/日 ≈ 7,300 units, 岩岩夠。改成每 10 分鐘就會爆。
+    - cron: "7,27,47 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write     # 用嚟將 data/streamers.json commit 返去
+
+concurrency:
+  group: streamer-arena
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/streamer-viewer-visualization-hmhkzf
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 收集全球直播人數
+        env:
+          # 冇 key 嘅平台會自動跳過, 全部失敗就出示範數據 (JSON 會標明 source=demo)
+          TWITCH_CLIENT_ID:     ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          YOUTUBE_API_KEY:      ${{ secrets.YOUTUBE_API_KEY }}
+          TOP_N: "60"
+          DEBUG: "1"
+        run: python3 -m streamer_arena.collect
+
+      - name: Commit 最新 snapshot
+        run: |
+          git config user.name "streamer-arena-bot"
+          git config user.email "actions@github.com"
+          git add data/streamers.json data/history.json
+          if git diff --cached --quiet; then
+            echo "數據冇變, 唔使 commit"
+          else
+            git commit -m "chore(arena): 更新直播人潮 snapshot [skip ci]"
+            git push
+          fi
