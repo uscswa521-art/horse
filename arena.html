@@ -153,8 +153,9 @@ body.mode-overlay .hint,body.mode-wall .hint{display:none}
 <body>
 
 <div id="stageWrap">
-  <canvas id="crowd"></canvas><!-- 靜態人海 (只喺數字變咗先重畫) -->
-  <canvas id="fx"></canvas><!-- 動畫層: 燈海閃爍 / 人浪 / 射燈 -->
+  <canvas id="gl"></canvas><!-- 3D 場館 (WebGL2, 觀眾同直播主識郁) -->
+  <canvas id="crowd"></canvas><!-- 2D fallback: 靜態人海 -->
+  <canvas id="fx"></canvas><!-- 2D fallback: 動畫層 -->
 </div>
 
 <div class="wall" id="wall"></div>
@@ -187,24 +188,33 @@ body.mode-overlay .hint,body.mode-wall .hint{display:none}
 <div class="foot" id="foot"></div>
 <div class="hint" id="hint">← → 換直播主　·　空白鍵 自動巡場　·　按底下卡片跳台</div>
 
+<script src="arena3d.js"></script>
 <script>
 (() => {
 "use strict";
 // ══ 設定 (全部可以用 URL 參數改) ═════════════════════════════════════════
 //  arena.html?mode=overlay&me=twitch:xqc&bg=transparent
 const P = new URLSearchParams(location.search);
+const MODE = P.get("mode") || "arena";
 const CFG = {
-  mode:     P.get("mode")   || "arena",          // arena | overlay | wall
+  mode:     MODE,                                 // arena | overlay | wall
   bg:       P.get("bg")     || (P.get("mode")==="overlay" ? "transparent" : "dark"),
   data:     P.get("data")   || "data/streamers.json",
   me:       (P.get("me")    || "").toLowerCase(), // 例: twitch:xqc / xqc
   only:     (P.get("platform")||"").toLowerCase().split(",").filter(Boolean),
   top:      +(P.get("top")  || 40),
   refresh:  Math.max(15, +(P.get("refresh") || 60)) * 1000,
-  maxDots:  Math.min(90000, +(P.get("dots") || 26000)),
+  // 3D 場館可以企多啲人 (GPU instancing, 一個 draw call 搞掂)
+  maxDots:  Math.min(150000, +(P.get("dots") ||
+            ((P.get("view") || (MODE === "overlay" ? "2d" : "3d")) === "3d" &&
+             window.Arena3D && Arena3D.supported() ? 45000 : 26000))),
   cycle:    P.get("cycle") !== "0",               // 自動巡場
   cycleSec: Math.max(4, +(P.get("cycleSec") || 9)),
   unit:     P.get("unit") || "紅館",              // 用邊個場館做換算單位
+  // 3D 場館預設開; OBS overlay 嗰條窄橫幅預設用 2D —
+  //   一嚟細細條睇唔到立體, 二嚟唔想食直播主部機嘅 GPU。想要就 ?view=3d
+  view:     P.get("view") || (MODE === "overlay" ? "2d" : "3d"),
+  cam:      P.get("cam") || "auto",               // auto = 冇人郁就自己遊場
 };
 document.body.classList.add("mode-" + CFG.mode, "bg-" + CFG.bg);
 
@@ -279,15 +289,28 @@ const capAt = R => Math.max(0, FAN*(R*R - R0*R0)/2);
 const radiusFor = c => Math.sqrt(2*c/FAN + R0*R0);
 
 // ══ Canvas ══════════════════════════════════════════════════════════════
-const cvC = $("crowd"), cvF = $("fx");
+const cvC = $("crowd"), cvF = $("fx"), cvG = $("gl");
 const ctxC = cvC.getContext("2d"), ctxF = cvF.getContext("2d");
 let W=0, H=0, DPR=1, view = null, crowdKey = "";
+
+// 3D 場館: 有 WebGL2 就用, 冇就跌返落 2D 人海 (功能一樣, 只係唔立體)
+let R3D = null;
+if (CFG.view === "3d" && CFG.mode !== "wall" &&
+    window.Arena3D && Arena3D.supported()) {
+  try { R3D = Arena3D.create(cvG, {cam: CFG.cam, mode: CFG.mode,
+                                   onQuality: () => updateScale()}); }
+  catch (e) { console.warn("3D 開唔到, 用返 2D:", e); R3D = null; }
+}
+if (R3D) { cvC.style.display = cvF.style.display = "none"; }
+else { cvG.style.display = "none"; }
+document.body.classList.add(R3D ? "is-3d" : "is-2d");
 
 function resize(){
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = innerWidth; H = innerHeight;
   for (const c of [cvC, cvF]) { c.width = W*DPR; c.height = H*DPR; }
   ctxC.setTransform(DPR,0,0,DPR,0,0); ctxF.setTransform(DPR,0,0,DPR,0,0);
+  if (R3D) R3D.resize(W, H, DPR);
   crowdKey = "";          // 尺寸變咗要重畫人海
 }
 addEventListener("resize", resize);
@@ -411,8 +434,10 @@ function shade(hex, a, i){
 let t0 = performance.now();
 function fx(now){
   requestAnimationFrame(fx);
-  if (!view || CFG.mode === "wall") return;
+  if (CFG.mode === "wall") return;
   const t = (now - t0)/1000;
+  if (R3D) { R3D.render(t); tick(now); return; }
+  if (!view) return;
   ctxF.clearRect(0,0,W,H);
   const {z, cx, cy, R, color, dots} = view;
 
@@ -458,20 +483,53 @@ function fx(now){
     ctxF.closePath(); ctxF.fill();
   }
 
-  // 數字平滑跳動
+  tick(now);
+}
+
+/** 數字平滑跳動 + 自動巡場 (2D / 3D 都要行)。 */
+function tick(now){
   const target = list[idx] ? list[idx].viewers : 0;
   if (Math.abs(shown - target) > 0.6) {
     shown += (target - shown) * 0.12;
     $("n").textContent = cm(Math.round(shown));
   }
-
-  // 自動巡場
   if (cycling && list.length > 1 && now - cycleT > CFG.cycleSec*1000) {
     cycleT = now; focus((idx+1) % list.length);
   }
 }
 function hexA(hex,a){ const c=RGB[hex]||[255,255,255]; return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
 requestAnimationFrame(fx);
+
+/** 誠實講返: 畫面上一個公仔 / 一粒光點, 到底代表幾多個真人。
+    (3D 模式如果電腦跑唔郁, 會自動少畫幾成人, 呢個數就會跟住變) */
+function updateScale(){
+  const s = list[idx]; if (!s) return;
+  const drawn = R3D ? (R3D.renderN || R3D.instN)
+                    : Math.min(s.viewers, CFG.maxDots);
+  const who = R3D ? "個公仔" : "粒光點";
+  const per = Math.max(1, Math.round(s.viewers / Math.max(1, drawn)));
+  $("scale").innerHTML = per > 1
+    ? `<i></i>1 ${who} = ${cm(per)} 人（人太多，場入面企緊 ${cm(drawn)} ${who.slice(0,1)}）`
+    : `<i></i>1 ${who} = 1 個人（場入面企緊 ${cm(drawn)} ${who.slice(0,1)}）`;
+}
+
+/** 砌 3D 場館: 同 2D 用返同一套座位排位, 加埋碗形高度就係個場。 */
+function build3d(s, color){
+  const dots = Math.min(s.viewers, CFG.maxDots);
+  const perDot = Math.max(1, Math.ceil(s.viewers / CFG.maxDots));
+  const pts = layout(dots);
+  const R = radiusFor(dots) + 2;
+  R3D.setScene({
+    pts, dots, R, R0, FAN, color,
+    viewers: s.viewers, perDot,
+    name: s.name, platform: s.platform,
+    // 場館容量圈 (地台上面嗰幾個圈): 一眼睇到個紅館喺呢片人海入面有幾細
+    venues: VENUES.filter(x => x.cap/perDot <= dots*1.7)
+                  .map(x => ({r: radiusFor(x.cap/perDot),
+                              filled: x.cap <= s.viewers, unit: x === UNIT})),
+  });
+  return {perDot, dots};
+}
 
 // ══ 揀邊個直播主 ════════════════════════════════════════════════════════
 function focus(i){
@@ -509,10 +567,8 @@ function focus(i){
     `</span>`;
 
   crowdKey = "";                                   // 換人 = 重畫人海
-  const v = drawCrowd(s.viewers, col);
-  $("scale").innerHTML = v.perDot > 1
-    ? `<i></i>1 粒光點 = ${cm(v.perDot)} 人（人太多，畫唔晒 ${cm(s.viewers)} 粒）`
-    : `<i></i>1 粒光點 = 1 個人（畫緊 ${cm(v.dots)} 粒）`;
+  if (R3D) build3d(s, col); else drawCrowd(s.viewers, col);
+  updateScale();
 
   for (const el of document.querySelectorAll(".chip"))
     el.classList.toggle("on", +el.dataset.i === idx);
@@ -663,7 +719,15 @@ addEventListener("keydown", e => {
   else if (e.key === " ") { e.preventDefault(); cycling = !cycling; cycleT = performance.now(); }
 });
 addEventListener("resize", () => { crowdKey=""; if (CFG.mode==="wall") renderWall(); else focus(idx); });
-setTimeout(() => { const h=$("hint"); if(h) h.style.opacity=0; }, 6000);
+if (R3D) $("hint").innerHTML =
+  "拖 = 轉視角　·　滾輪／兩指 = 行入人堆／退到高空　·　WASD 行路　·　" +
+  "← → 換直播主　·　R 返回入場位";
+setTimeout(() => { const h=$("hint"); if(h) h.style.opacity=0; }, 9000);
+// 3D 模式落手拖過就唔好再自動巡場, 唔會拖到一半俾佢跳咗台
+if (R3D) cvG.addEventListener("pointerdown", () => { cycling = false; });
+
+// 調試用 (喺 console 打 ArenaDebug() 就見到而家嘅狀態)
+window.ArenaDebug = () => ({R3D, list, idx, CFG, W, H});
 
 resize();
 load();
