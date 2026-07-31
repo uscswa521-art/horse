@@ -179,7 +179,7 @@ class Hall {
     this.me = {x: 0, z: 8, yaw: Math.PI, vy: 0, walk: 0, speed: 0};
     this.cam = {yaw: 0, pitch: 0.16, dist: 5.6, fp: false};
     this.keys = new Set();
-    this.touch = {mv: null, look: null};
+    this.touch = {mv: null, look: null, tap: null};
     this._bindInput();
     this._people(opts.people == null ? 320 : Math.max(0, opts.people|0));
   }
@@ -344,6 +344,11 @@ class Hall {
       if (" wasd".includes(k) || k.startsWith("arrow")) e.preventDefault();
     });
     addEventListener("keyup", e => this.keys.delete(e.key.toLowerCase()));
+    // 切走個窗 / 失焦: 瀏覽器唔會補返 keyup, 唔清就會一直行落去
+    addEventListener("blur", () => this.keys.clear());
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) this.keys.clear();
+    });
 
     cv.addEventListener("click", () => {
       if (document.pointerLockElement === cv) this._open();
@@ -367,9 +372,14 @@ class Hall {
       const left = e.clientX < innerWidth/2;
       (left ? (t.mv = {id:e.pointerId, x0:e.clientX, y0:e.clientY, dx:0, dy:0})
             : (t.look = {id:e.pointerId, x:e.clientX, y:e.clientY}));
-      cv.setPointerCapture(e.pointerId);
+      // 記住落手位同時間 — 冇點郁過嘅短撳當係「開片」
+      t.tap = {id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: 0};
+      try { cv.setPointerCapture(e.pointerId); } catch (err) { /* 有啲情況捕捉唔到, 唔緊要 */ }
     });
     cv.addEventListener("pointermove", e => {
+      if (t.tap && e.pointerId === t.tap.id)
+        t.tap.moved = Math.max(t.tap.moved,
+          Math.hypot(e.clientX - t.tap.x, e.clientY - t.tap.y));
       if (t.mv && e.pointerId === t.mv.id) {
         t.mv.dx = Math.max(-1, Math.min(1, (e.clientX - t.mv.x0)/60));
         t.mv.dy = Math.max(-1, Math.min(1, (e.clientY - t.mv.y0)/60));
@@ -382,6 +392,11 @@ class Hall {
     const up = e => {
       if (t.mv && e.pointerId === t.mv.id) t.mv = null;
       if (t.look && e.pointerId === t.look.id) t.look = null;
+      if (t.tap && e.pointerId === t.tap.id) {
+        // 手機: 撳一下 (冇拖過, 300ms 內) = 開你望住嗰條片
+        if (t.tap.moved < 10 && performance.now() - t.tap.t < 320) this._open();
+        t.tap = null;
+      }
     };
     cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
   }

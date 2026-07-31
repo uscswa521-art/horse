@@ -120,12 +120,16 @@ def _videos_by_id(key: str, ids: list) -> list:
     return out
 
 
-def fetch_channels(key: str, chans: list, per: int) -> list:
+def fetch_channels(key: str, chans: list, per: int, errors: dict = None) -> list:
     """
     跟開嘅頻道最新片 —— 呢個係最接近「你嘅首頁」嘅公開做法。
     每個頻道大約 3 units (channels + playlistItems + videos 攤分)。
     chans 入面可以係 channel id (UC…) 或者 handle (@name)。
+
+    ⚠️ 邊個頻道攞唔到都會寫入 errors dict (再寫落 JSON, 畫面會顯示) —
+       打錯 handle 嘅時候 API 係回 200 + 空 items, 唔記錄就會靜雞雞少咗嘢。
     """
+    errors = {} if errors is None else errors
     ids = []
     for ch in chans:
         try:
@@ -139,10 +143,14 @@ def fetch_channels(key: str, chans: list, per: int) -> list:
             d = _get("channels", p)
             items = d.get("items") or []
             if not items:
+                errors[ch] = "搵唔到呢個頻道 (handle / id 打錯咗?)"
+                print(f"   ❌ 頻道 {ch}: {errors[ch]}")
                 continue
             up = ((items[0].get("contentDetails") or {})
                   .get("relatedPlaylists") or {}).get("uploads")
             if not up:
+                errors[ch] = "個頻道冇 uploads playlist"
+                print(f"   ❌ 頻道 {ch}: {errors[ch]}")
                 continue
             pl = _get("playlistItems", {
                 "part": "contentDetails", "playlistId": up,
@@ -152,7 +160,8 @@ def fetch_channels(key: str, chans: list, per: int) -> list:
                     for it in pl.get("items", [])
                     if (it.get("contentDetails") or {}).get("videoId")]
         except Exception as e:                                    # noqa: BLE001
-            print(f"   ❌ 頻道 {ch}: {type(e).__name__}: {e}")
+            errors[ch] = f"{type(e).__name__}: {e}"
+            print(f"   ❌ 頻道 {ch}: {errors[ch]}")
     return _videos_by_id(key, ids) if ids else []
 
 
@@ -225,9 +234,11 @@ def main(argv=None) -> int:
         chans = [c.strip() for c in args.channels.split(",") if c.strip()]
         if chans:
             try:
-                got = fetch_channels(key, chans, args.per_channel)
+                got = fetch_channels(key, chans, args.per_channel, errors)
                 vids.extend(got)
                 print(f"   ✅ 跟開嘅頻道: {len(got)} 條")
+                if not got:
+                    errors.setdefault("channels", "一個頻道都攞唔到片")
             except Exception as e:                                 # noqa: BLE001
                 errors["channels"] = f"{type(e).__name__}: {e}"
         for rg in regions:
@@ -266,8 +277,12 @@ def main(argv=None) -> int:
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": source,
         # ⚠️ 呢句好重要, 畫面會照樣顯示出嚟
-        "feed": "channels+trending" if args.channels else "youtube_trending",
-        "note": ("YouTube 冇公開 API 攞個人化首頁。呢度顯示嘅係"
+        # ⚠️ 出咗示範數據就唔可以再話係頻道 / 熱門榜 — 要照實講。
+        "feed": ("demo" if source == "demo"
+                 else ("channels+trending" if args.channels else "youtube_trending")),
+        "note": ("呢啲係示範數據（標題全部虛構），唔係真實 YouTube 內容。"
+                 if source == "demo" else
+                 "YouTube 冇公開 API 攞個人化首頁。呢度顯示嘅係"
                  + ("你指定嘅頻道最新片 + " if args.channels else "")
                  + "公開熱門榜。"),
         "regions": regions if source != "demo" else ["DEMO"],

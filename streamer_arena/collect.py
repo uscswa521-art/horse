@@ -71,7 +71,9 @@ def update_history(snapshot: dict, path: str, keep: int) -> None:
         "t": snapshot["generated_at"],
         "total": snapshot["total_viewers"],
         "source": snapshot["source"],
-        "platforms": {p: v["viewers"] for p, v in snapshot["platforms"].items()},
+        # ⚠️ 用 .get: 「全部平台失敗」嗰條路會為未知平台砌一個冇 viewers 嘅 entry,
+        #    直接 v["viewers"] 會 KeyError, 成個 run 死埋, 連寫好嘅 snapshot 都 commit 唔到。
+        "platforms": {p: v.get("viewers", 0) for p, v in snapshot["platforms"].items()},
     })
     hist = hist[-keep:]
     _write_json(path, hist)

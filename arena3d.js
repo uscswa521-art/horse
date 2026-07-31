@@ -467,6 +467,11 @@ class Renderer {
       if (k === "r") { this._camInit = false; if (this.scene) this.setScene(this.scene); }
     });
     addEventListener("keyup", e => this.keys.delete(e.key.toLowerCase()));
+    // 切走個窗 / 失焦: 瀏覽器唔會補返 keyup, 唔清就會一直行落去
+    addEventListener("blur", () => this.keys.clear());
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) this.keys.clear();
+    });
   }
   _dolly(f){
     const R = this.scene ? this.scene.R : 100;

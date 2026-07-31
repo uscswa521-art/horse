@@ -34,6 +34,8 @@ h1 em{color:#ff4a5c;font-style:normal}
 /* 望住嗰塊板 */
 .focus{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(12px);
   z-index:6;width:min(92vw,620px);opacity:0;transition:.18s;pointer-events:none}
+.focus.on{pointer-events:auto}
+.focus .card{cursor:pointer}
 .focus.on{opacity:1;transform:translateX(-50%) translateY(0)}
 .focus .card{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
   border-left:3px solid #ffd479}
@@ -131,21 +133,47 @@ let hall = null, snap = null, focusV = null;
 // ── 攞數據 ──────────────────────────────────────────────────────────────
 async function load(){
   try {
-    const r = await fetch(CFG.data + "?t=" + Date.now(), {cache:"no-store"});
+    const sep = CFG.data.includes("?") ? "&" : "?";
+    const r = await fetch(CFG.data + sep + "t=" + Date.now(), {cache:"no-store"});
     if (!r.ok) throw new Error("HTTP " + r.status);
     snap = await r.json();
   } catch (e) {
+    // ⚠️ #veil 一開始就係冚住成版 (WebGL2 唔支援嗰個訊息靠佢),
+    //    所以錯咗一定要寫入 veil 度 —— 唔係就變咗一塊撳唔甩嘅黑屏。
     $("sub").textContent = "讀唔到 " + CFG.data;
     $("honest").innerHTML = `<span class="warn">✕ ${esc(e.message||e)}</span>`;
+    $("veilBody").innerHTML =
+      `<h2>攞唔到片單 😥</h2>
+       <p>讀唔到 <code>${esc(CFG.data)}</code> — <b>${esc(e.message||String(e))}</b></p>
+       <p style="margin-top:10px">常見原因：
+         <br>· 用 <code>file://</code> 直接開（瀏覽器會擋 fetch）→ 要開個 http server：
+              <code>python3 -m http.server 8899</code>
+         <br>· GitHub Pages 未部署好，或者 <code>data/videos.json</code> 未 commit
+         <br>· <code>?data=</code> 指錯咗位</p>
+       <button class="go" id="retry">再試一次</button>
+       <button class="go ghost" id="skip">照入場（空大堂）</button>`;
+    $("veil").classList.remove("off");
+    $("retry").onclick = () => { $("veilBody").innerHTML = "<h2>載入緊…</h2>"; load(); };
+    $("skip").onclick = () => $("veil").classList.add("off");
     return;
   }
   const vids = (snap.videos || []).slice(0, 60);
   $("sub").textContent =
     `${vids.length} 條片　·　${(snap.regions||[]).join(" / ")}　·　行埋入去揀片`;
   // ⚠️ 誠實聲明: YouTube 冇 API 攞個人化首頁, 呢度係公開熱門榜
+  // 誠實顯示: 示範數據 / 部分來源失敗 / 每個失敗原因都寫返出嚟
+  const errs = Object.entries(snap.errors || {});
   $("honest").innerHTML =
-    (snap.source === "demo" ? `<span class="warn">⚠️ 示範數據 · 未接 YouTube API key</span> ` : "") +
-    `<div class="sub" style="margin-top:5px">${esc(snap.note || "")}</div>`;
+    (snap.source === "demo"
+      ? `<span class="warn">⚠️ 示範數據 · 未接 YouTube API key</span> `
+      : snap.source === "mixed" || errs.length
+        ? `<span class="warn">⚠️ 部分來源攞唔到</span> ` : "") +
+    `<div class="sub" style="margin-top:5px">${esc(snap.note || "")}</div>` +
+    (errs.length
+      ? `<div class="sub" style="margin-top:4px;color:#d17c74">✕ ` +
+        errs.map(([k, v]) => `${esc(k)}: ${esc(String(v).slice(0, 64))}`).join("　") +
+        `</div>`
+      : "");
   hall.setVideos(vids);
   showIntro(vids.length);
 }
@@ -211,6 +239,9 @@ hall = Tube3D.create($("gl"), {
   },
   onOpen: openVideo,
 });
+
+// 撳底下塊卡都可以開片 (手機冇鍵盤, 呢個係最直接嗰條路)
+$("focus").addEventListener("click", () => { if (focusV) openVideo(focusV); });
 
 function resize(){
   const dpr = Math.min(2, devicePixelRatio || 1);

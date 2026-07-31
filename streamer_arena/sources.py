@@ -33,10 +33,13 @@ class Streamer:
     url: str = ""
     language: str = ""
     avatar: str = ""
-    channel_id: str = ""     # 平台內部 id / slug, 用嚟做 highlight
+    channel_id: str = ""     # 平台內部 id / slug, 用嚟做 highlight (?me= 靠佢)
+    # 同一個頻道可以同時開幾條 live (YouTube), 淨靠 channel_id 會撞 id,
+    # 前端嘅 prevViewers / ▲▼ 就會錯亂。有 stream_id 就用佢做唯一 key。
+    stream_id: str = ""
 
     def uid(self) -> str:
-        return f"{self.platform}:{self.channel_id or self.name}".lower()
+        return f"{self.platform}:{self.stream_id or self.channel_id or self.name}".lower()
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -188,6 +191,7 @@ def fetch_youtube(top_n: int) -> Result:
                 avatar=(thumbs.get("medium") or thumbs.get("default")
                         or {}).get("url", ""),
                 channel_id=sn.get("channelId") or "",
+                stream_id=v.get("id") or "",      # video id — 一條 live 一個
             ))
         out.sort(key=lambda s: s.viewers, reverse=True)
         _log("youtube:", len(out))
