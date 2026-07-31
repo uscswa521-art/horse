@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/streamer-viewer-visualization-hmhkzf
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -44,7 +44,17 @@ jobs:
           git add data/streamers.json data/history.json
           if git diff --cached --quiet; then
             echo "數據冇變, 唔使 commit"
-          else
-            git commit -m "chore(arena): 更新直播人潮 snapshot [skip ci]"
-            git push
+            exit 0
           fi
+          # ⚠️ 唔好加 [skip ci]: 我哋兩個 workflow 都冇 push trigger, 加咗冇著數,
+          #    反而會連 GitHub Pages 嗰個 "pages build and deployment" 都跳埋,
+          #    咁新數據就永遠上唔到線。
+          git commit -m "chore(arena): 更新直播人潮 snapshot"
+          # 影片大堂嗰個 workflow 都係 push 落 main, 撞到就 rebase 再試
+          for i in 1 2 3; do
+            git push && exit 0
+            echo "push 失敗 (可能俾另一個 workflow 搶先), rebase 再試…"
+            git pull --rebase origin main || exit 1
+            sleep 3
+          done
+          exit 1

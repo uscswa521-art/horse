@@ -2,10 +2,11 @@ name: 🎬 影片大堂 / Tube3D
 
 on:
   schedule:
-    # 每 30 分鐘 (:17 / :47) — 特登避開直播人潮嗰個 workflow (:07/:27/:47) 嘅整點。
+    # 每 30 分鐘 (:12 / :42) — 特登錯開直播人潮嗰個 workflow (:07/:27/:47),
+    #   兩個都會 push 落 main, 唔想撞;  撞到都有 rebase retry 兜底。
     # quota 好平: chart=mostPopular 一個地區得 1 unit,
     #   3 個地區 × 48 次/日 ≈ 144 units (直播人潮嗰邊用緊 ~7,300, 加埋都夠)。
-    - cron: "17,47 * * * *"
+    - cron: "12,42 * * * *"
   workflow_dispatch: {}
 
 permissions:
@@ -21,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: claude/streamer-viewer-visualization-hmhkzf
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
@@ -45,7 +46,15 @@ jobs:
           git add data/videos.json
           if git diff --cached --quiet; then
             echo "片單冇變, 唔使 commit"
-          else
-            git commit -m "chore(tube3d): 更新影片大堂片單 [skip ci]"
-            git push
+            exit 0
           fi
+          # ⚠️ 唔好加 [skip ci] — 會連 Pages 部署都跳埋, 新片單上唔到線。
+          git commit -m "chore(tube3d): 更新影片大堂片單"
+          # 直播人潮嗰個 workflow 都係 push 落 main, 撞到就 rebase 再試
+          for i in 1 2 3; do
+            git push && exit 0
+            echo "push 失敗 (可能俾另一個 workflow 搶先), rebase 再試…"
+            git pull --rebase origin main || exit 1
+            sleep 3
+          done
+          exit 1

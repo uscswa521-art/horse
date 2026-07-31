@@ -183,6 +183,24 @@ python3 -m http.server 8899
 
 ---
 
+## 上線 (GitHub Pages)
+
+1. repo → **Settings → Pages → Source: Deploy from a branch**
+2. Branch 揀 **`main`**、folder 揀 **`/ (root)`** → Save
+3. 一兩分鐘之後就開得：
+
+```
+https://<你嘅 github 用戶名>.github.io/<repo 名>/arena.html      ← 演唱會場館
+https://<你嘅 github 用戶名>.github.io/<repo 名>/tube3d.html     ← 影片大堂
+```
+
+兩個 workflow 都係 checkout **`main`**、跑完之後將 `data/*.json` **commit 返落 `main`**，
+所以 Pages 要 serve `main` 先會見到新數據。
+（commit message 特登**冇**加 `[skip ci]` —— 加咗會連 Pages 嘅
+`pages build and deployment` 都跳埋，新數據就永遠上唔到線。）
+
+---
+
 ## 幾點要講清楚
 
 * 觀看人數係**平台自己報**嘅數，各平台點計唔一樣（YouTube 嘅 concurrent viewers
