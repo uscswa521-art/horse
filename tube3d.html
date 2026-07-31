@@ -1,0 +1,262 @@
+<!DOCTYPE html><html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>🎬 Tube3D · 行得入去嘅影片大堂</title>
+<meta name="description" content="唔再係一個個視窗：每條片變成一塊立體展板，你操控一個角色行入去揀片。">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#04060c}
+body{color:#e6edf3;font-family:-apple-system,"Segoe UI","PingFang HK","Microsoft JhengHei",sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;user-select:none}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+
+.hud{position:fixed;z-index:5;pointer-events:none}
+.tl{top:0;left:0;padding:14px 16px}
+.tr{top:0;right:0;padding:14px 16px;text-align:right}
+.bl{bottom:0;left:0;padding:14px 16px}
+.card{pointer-events:auto;background:rgba(8,10,18,.74);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.09);border-radius:13px;padding:11px 14px}
+
+h1{font-size:15px;font-weight:800;letter-spacing:.3px}
+h1 em{color:#ff4a5c;font-style:normal}
+.sub{font-size:11px;color:#8b949e;margin-top:2px}
+.warn{display:inline-block;background:#3a2a08;border:1px solid #7a5a12;color:#ffd479;
+  border-radius:6px;padding:1px 8px;font-weight:700;font-size:10.5px;margin-top:6px}
+
+/* 準星 */
+.aim{position:fixed;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;z-index:4;
+  pointer-events:none;opacity:.5;transition:.15s}
+.aim:before,.aim:after{content:"";position:absolute;background:#fff}
+.aim:before{left:7px;top:0;width:2px;height:16px}
+.aim:after{top:7px;left:0;height:2px;width:16px}
+.aim.on{opacity:1;transform:scale(1.35)}
+.aim.on:before,.aim.on:after{background:#ffd479}
+
+/* 望住嗰塊板 */
+.focus{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(12px);
+  z-index:6;width:min(92vw,620px);opacity:0;transition:.18s;pointer-events:none}
+.focus.on{opacity:1;transform:translateX(-50%) translateY(0)}
+.focus .card{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;
+  border-left:3px solid #ffd479}
+.ft{font-size:15px;font-weight:800;line-height:1.35;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.fm{font-size:11.5px;color:#8b949e;margin-top:3px}
+.fk{font-size:11px;font-weight:800;color:#0b0d14;background:#ffd479;
+  border-radius:7px;padding:6px 11px;white-space:nowrap;text-align:center}
+.fk small{display:block;font-weight:700;color:#5a4a1a;font-size:9.5px}
+
+/* 小地圖 */
+#map{pointer-events:auto;display:block;width:150px;height:150px;border-radius:11px;
+  background:rgba(8,10,18,.7);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(10px)}
+
+.keys{font-size:11px;color:#8b949e;line-height:1.9}
+.keys b{display:inline-block;min-width:22px;text-align:center;background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.14);border-radius:4px;padding:0 5px;color:#e6edf3;
+  font-size:10.5px;font-weight:700;margin-right:4px}
+
+/* 開場 / 播放 overlay */
+.veil{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+  background:rgba(3,5,10,.86);backdrop-filter:blur(8px);padding:20px}
+.veil.off{display:none}
+.panel{background:#0b0e17;border:1px solid rgba(255,255,255,.11);border-radius:16px;
+  padding:22px 24px;max-width:min(94vw,900px);width:100%;max-height:92vh;overflow:auto}
+.panel h2{font-size:20px;font-weight:800;margin-bottom:8px}
+.panel p{font-size:13px;color:#adbac7;line-height:1.75}
+.panel .go{margin-top:16px;display:inline-block;background:#ff4a5c;color:#fff;font-weight:800;
+  border:0;border-radius:9px;padding:11px 22px;font-size:14px;cursor:pointer}
+.panel .ghost{background:transparent;border:1px solid rgba(255,255,255,.2);color:#c9d1d9;
+  margin-left:8px}
+.frame{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:11px;
+  overflow:hidden;margin:12px 0}
+.frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.mini{font-size:11.5px;color:#6e7681;margin-top:10px;line-height:1.7}
+kbd{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);border-radius:4px;
+  padding:1px 6px;font-size:11px;font-weight:700}
+@media(max-width:720px){ .hud.tr{display:none} .keys{display:none} }
+</style></head>
+<body>
+
+<canvas id="gl"></canvas>
+<div class="aim" id="aim"></div>
+
+<div class="hud tl"><div class="card">
+  <h1>🎬 Tube<em>3D</em> · 影片大堂</h1>
+  <div class="sub" id="sub">載入緊…</div>
+  <div id="honest"></div>
+</div></div>
+
+<div class="hud tr"><canvas id="map" width="300" height="300"></canvas></div>
+
+<div class="hud bl"><div class="keys">
+  <div><b>W</b><b>A</b><b>S</b><b>D</b> 行路　<b>Shift</b> 跑</div>
+  <div><b>滑鼠</b> 望　<b>E</b> / <b>撳一下</b> 開片　<b>V</b> 第一／第三身　<b>滾輪</b> 拉遠拉近</div>
+</div></div>
+
+<div class="focus" id="focus"><div class="card">
+  <div>
+    <div class="ft" id="ftitle"></div>
+    <div class="fm" id="fmeta"></div>
+  </div>
+  <div class="fk">E<small>開嚟睇</small></div>
+</div></div>
+
+<div class="veil" id="veil"><div class="panel" id="veilBody"></div></div>
+
+<script src="tube3d.js"></script>
+<script>
+(() => {
+"use strict";
+const P = new URLSearchParams(location.search);
+const CFG = {
+  data:   P.get("data") || "data/videos.json",
+  people: Math.max(0, Math.min(1200, +(P.get("people") || 320))),
+};
+const $ = id => document.getElementById(id);
+const cm = n => (n|0).toLocaleString("en-US");
+const zh = n => n >= 1e8 ? (n/1e8).toFixed(1)+"億" : n >= 1e4 ? (n/1e4).toFixed(1)+"萬" : cm(n);
+const esc = s => String(s??"").replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+const dur = s => { s|=0; const h=s/3600|0, m=(s%3600)/60|0;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`
+           : `${m}:${String(s%60).padStart(2,"0")}`; };
+
+if (!window.Tube3D || !Tube3D.supported()) {
+  $("veilBody").innerHTML =
+    `<h2>部機唔支援 WebGL2 😥</h2>
+     <p>呢個 3D 大堂要 <b>WebGL2</b> 先行到。可以試下換個新啲嘅瀏覽器，
+        或者喺瀏覽器設定度開返「硬件加速」。</p>`;
+  return;
+}
+
+let hall = null, snap = null, focusV = null;
+
+// ── 攞數據 ──────────────────────────────────────────────────────────────
+async function load(){
+  try {
+    const r = await fetch(CFG.data + "?t=" + Date.now(), {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    snap = await r.json();
+  } catch (e) {
+    $("sub").textContent = "讀唔到 " + CFG.data;
+    $("honest").innerHTML = `<span class="warn">✕ ${esc(e.message||e)}</span>`;
+    return;
+  }
+  const vids = (snap.videos || []).slice(0, 60);
+  $("sub").textContent =
+    `${vids.length} 條片　·　${(snap.regions||[]).join(" / ")}　·　行埋入去揀片`;
+  // ⚠️ 誠實聲明: YouTube 冇 API 攞個人化首頁, 呢度係公開熱門榜
+  $("honest").innerHTML =
+    (snap.source === "demo" ? `<span class="warn">⚠️ 示範數據 · 未接 YouTube API key</span> ` : "") +
+    `<div class="sub" style="margin-top:5px">${esc(snap.note || "")}</div>`;
+  hall.setVideos(vids);
+  showIntro(vids.length);
+}
+
+// ── 開場 ────────────────────────────────────────────────────────────────
+function showIntro(n){
+  $("veilBody").innerHTML =
+    `<h2>🎬 歡迎入場</h2>
+     <p>呢度唔係一個個視窗 —— <b>${n} 條片</b>變成 ${n} 塊立體展板企喺大堂度，
+        排頭嘅擺近門口，<b>愈多人睇塊板愈大</b>。你操控住個角色行入去，
+        望住邊塊板就睇到邊條片嘅資料，撳 <kbd>E</kbd> 就開嚟睇。</p>
+     <p style="margin-top:10px">
+        <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 行路　·
+        <kbd>Shift</kbd> 跑　·　<kbd>滑鼠</kbd> 望　·
+        <kbd>V</kbd> 第一／第三身　·　<kbd>Esc</kbd> 放開滑鼠<br>
+        <span style="color:#8b949e">手機：左邊撳住拖 = 行路，右邊拖 = 望</span></p>
+     <button class="go" id="start">入場</button>
+     <div class="mini">${esc(snap && snap.note || "")}</div>`;
+  $("veil").classList.remove("off");
+  $("start").onclick = () => {
+    $("veil").classList.add("off");
+    $("gl").requestPointerLock && $("gl").requestPointerLock();
+  };
+}
+
+// ── 開片 ────────────────────────────────────────────────────────────────
+function openVideo(v){
+  if (!v) return;
+  document.exitPointerLock && document.exitPointerLock();
+  const embed = v.id
+    ? `<div class="frame"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0"
+         allow="accelerometer;autoplay;clipboard-write;encrypted-media;gyroscope;picture-in-picture"
+         referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="${esc(v.title)}"></iframe></div>`
+    : `<div class="frame" style="display:flex;align-items:center;justify-content:center;color:#6e7681;
+         font-size:13px">示範數據冇真實影片可以播</div>`;
+  $("veilBody").innerHTML =
+    `<h2>${esc(v.title)}</h2>
+     <p>${esc(v.channel)}　·　${zh(v.views||0)} 次觀看${v.duration ? "　·　" + dur(v.duration) : ""}${v.live ? "　·　🔴 直播中" : ""}</p>
+     ${embed}
+     ${v.url ? `<a class="go" href="${esc(v.url)}" target="_blank" rel="noopener">喺 YouTube 開 ↗</a>` : ""}
+     <button class="go ghost" id="back">返返個大堂</button>
+     <div class="mini">播放係用 YouTube 官方 embed（片本身有 DRM，冇可能貼落 3D 畫面度做材質）。
+       部分片會被版權方禁止 embed，嗰陣就要撳上面「喺 YouTube 開」。</div>`;
+  $("veil").classList.remove("off");
+  $("back").onclick = () => {
+    $("veil").classList.add("off");
+    $("gl").requestPointerLock && $("gl").requestPointerLock();
+  };
+}
+
+// ── 建場 ────────────────────────────────────────────────────────────────
+hall = Tube3D.create($("gl"), {
+  people: CFG.people,
+  onFocus(v){
+    focusV = v;
+    $("focus").classList.toggle("on", !!v);
+    $("aim").classList.toggle("on", !!v);
+    if (!v) return;
+    $("ftitle").textContent = v.title || "";
+    $("fmeta").textContent =
+      `${v.channel || ""}　·　${zh(v.views||0)} 次觀看` +
+      (v.duration ? `　·　${dur(v.duration)}` : "") + (v.live ? "　·　🔴 直播中" : "");
+  },
+  onOpen: openVideo,
+});
+
+function resize(){
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  hall.resize(innerWidth, innerHeight, dpr);
+  const m = $("map"); m.width = m.height = 300;
+}
+addEventListener("resize", resize);
+addEventListener("keydown", e => {
+  if (e.key === "Escape") document.exitPointerLock && document.exitPointerLock();
+});
+
+// ── 小地圖 ──────────────────────────────────────────────────────────────
+function drawMap(){
+  const c = $("map"), x = c.getContext("2d"), s = hall.state();
+  x.clearRect(0,0,300,300);
+  if (!s.panels.length) return;
+  let minX=1e9,maxX=-1e9,minZ=1e9,maxZ=-1e9;
+  for (const p of s.panels) {
+    minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x);
+    minZ=Math.min(minZ,p.z); maxZ=Math.max(maxZ,p.z);
+  }
+  minX-=8; maxX+=8; minZ-=8; maxZ+=16;
+  const sc = Math.min(280/(maxX-minX), 280/(maxZ-minZ));
+  const px = v => 150 + (v-(minX+maxX)/2)*sc, pz = v => 150 + (v-(minZ+maxZ)/2)*sc;
+  for (const p of s.panels) {
+    x.fillStyle = p.i === s.focus ? "#ffd479" : "rgba(255,255,255,.30)";
+    x.fillRect(px(p.x)-3, pz(p.z)-1.5, 6, 3);
+  }
+  // 你
+  const mx = px(s.x), mz = pz(s.z);
+  x.save(); x.translate(mx, mz); x.rotate(-s.yaw);
+  x.fillStyle = "#ff4a5c"; x.beginPath();
+  x.moveTo(0,-7); x.lineTo(5,6); x.lineTo(0,3); x.lineTo(-5,6); x.closePath(); x.fill();
+  x.restore();
+}
+
+let t0 = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  hall.render((now - t0)/1000);
+  drawMap();
+}
+resize();
+load();
+requestAnimationFrame(frame);
+window.TubeDebug = () => ({hall, snap, focusV});
+})();
+</script>
+</body></html>
