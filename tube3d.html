@@ -120,11 +120,32 @@ const dur = s => { s|=0; const h=s/3600|0, m=(s%3600)/60|0;
   return h ? `${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`
            : `${m}:${String(s%60).padStart(2,"0")}`; };
 
-if (!window.Tube3D || !Tube3D.supported()) {
+// ⚠️ 呢兩個原因完全唔同, 一定要分開講 —
+//    以前兩個都出「唔支援 WebGL2」, 但係最常見嗰個其實係「個 js 冇一齊解壓出嚟」。
+if (!window.Tube3D) {
+  const zip = /[\\/]Temp[\\/]|\.zip/i.test(location.href);
   $("veilBody").innerHTML =
-    `<h2>部機唔支援 WebGL2 😥</h2>
-     <p>呢個 3D 大堂要 <b>WebGL2</b> 先行到。可以試下換個新啲嘅瀏覽器，
-        或者喺瀏覽器設定度開返「硬件加速」。</p>`;
+    `<h2>載入唔到 <code>tube3d.js</code> 😥</h2>
+     <p>個 3D 引擎喺隔籬嘅 <code>tube3d.js</code> 度，而家搵唔到佢。</p>
+     ${zip ? `<p style="margin-top:10px;color:#ffd479"><b>你多數係喺 ZIP 入面直接
+        double-click 咗。</b>Windows 咁樣只會將你撳嗰一個檔解壓去 Temp 資料夾，
+        隔籬嘅 <code>tube3d.js</code> 冇一齊出嚟。</p>` : ""}
+     <p style="margin-top:10px">✅ <b>解決：</b>喺個 ZIP 上面 right-click →
+        <b>「解壓縮全部 / Extract All」</b>，
+        然後入去<b>解壓出嚟嗰個資料夾</b>再 double-click <code>tube3d.html</code>。
+        <code>tube3d.html</code> 同 <code>tube3d.js</code> 一定要喺同一個資料夾。</p>
+     <div class="mini">而家個位置：<br><code>${esc(location.href)}</code></div>`;
+  return;
+}
+if (!Tube3D.supported()) {
+  $("veilBody").innerHTML =
+    `<h2>部機開唔到 WebGL2 😥</h2>
+     <p>個 3D 引擎載到，但係瀏覽器開唔到 <b>WebGL2</b>。試下：</p>
+     <p style="margin-top:8px">
+        · Chrome / Edge：設定 → 系統 → 開返「<b>使用硬件加速</b>」，再重開瀏覽器<br>
+        · 開 <code>chrome://gpu</code> 睇下 <b>WebGL2</b> 嗰行寫住咩<br>
+        · 用 Chrome / Edge / Firefox 新版本（Safari 要 15 或以上）</p>
+     <div class="mini">${esc(navigator.userAgent)}</div>`;
   return;
 }
 

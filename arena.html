@@ -301,6 +301,9 @@ if (CFG.view === "3d" && CFG.mode !== "wall" &&
                                    onQuality: () => updateScale()}); }
   catch (e) { console.warn("3D 開唔到, 用返 2D:", e); R3D = null; }
 }
+// arena3d.js 載唔到 (例如喺 ZIP 入面直接開, 個 js 冇一齊解壓出嚟) 就會靜靜雞
+// 跌返落 2D —— 用得着但少咗嘢, 所以要講聲。
+const missing3d = CFG.view === "3d" && CFG.mode !== "wall" && !window.Arena3D;
 if (R3D) { cvC.style.display = cvF.style.display = "none"; }
 else { cvG.style.display = "none"; }
 document.body.classList.add(R3D ? "is-3d" : "is-2d");
@@ -642,6 +645,7 @@ function renderFoot(){
     ? "⚠️ 內建示範數據 · 讀唔到 " + esc(CFG.data) + "（file:// 開？行 python3 serve.py）"
     : snap.source === "demo" ? "⚠️ 示範數據 · 未接 API key" : "⚠️ 部分平台攞唔到";
   $("foot").innerHTML =
+    (missing3d ? `<span class="warn">⚠️ 載入唔到 arena3d.js（要解壓埋成個資料夾）· 而家用緊 2D</span> ` : "") +
     (snap.source !== "live" ? `<span class="warn">${warn}</span>` : "") +
     `<span class="meta">數據時間 ${snap.generated_at}（${mins} 分鐘前）· ` +
     `${cm(snap.counted_streamers)} 個直播</span>` +
