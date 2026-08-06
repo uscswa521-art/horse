@@ -638,8 +638,11 @@ function renderFoot(){
   const bad = Object.entries(snap.platforms).filter(([,v]) => !v.ok);
   const ago = new Date(snap.generated_at);
   const mins = Math.max(0, Math.round((Date.now() - ago.getTime())/60000));
+  const warn = snap.localDemo
+    ? "⚠️ 內建示範數據 · 讀唔到 " + esc(CFG.data) + "（file:// 開？行 python3 serve.py）"
+    : snap.source === "demo" ? "⚠️ 示範數據 · 未接 API key" : "⚠️ 部分平台攞唔到";
   $("foot").innerHTML =
-    (snap.source !== "live" ? `<span class="warn">${snap.source==="demo"?"⚠️ 示範數據 · 未接 API key":"⚠️ 部分平台攞唔到"}</span>` : "") +
+    (snap.source !== "live" ? `<span class="warn">${warn}</span>` : "") +
     `<span class="meta">數據時間 ${snap.generated_at}（${mins} 分鐘前）· ` +
     `${cm(snap.counted_streamers)} 個直播</span>` +
     (bad.length ? `<br><span class="err">✕ ${bad.map(([p,v]) =>
@@ -687,6 +690,47 @@ function drawMini(cv, n, color, maxV){
 
 const esc = s => String(s??"").replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
 
+/** file:// 直接 double-click 開嗰陣, 瀏覽器會擋 fetch(data/*.json)。
+    唔好淨係出個錯就算 —— 用內建示範數據頂住, 畫面照寫明係示範數據。
+    (要真數據就行 `python3 serve.py`) */
+function localDemo(err){
+  const R = {
+    twitch: [["NeonKettle","Just Chatting"],["PixelDim","League of Legends"],
+             ["SaltyRamen","VALORANT"],["VoidCastle","Grand Theft Auto V"],
+             ["MochiRaid","Just Chatting"],["BitLantern","Counter-Strike 2"]],
+    youtube:[["環球新聞直播台","News"],["Lo-Fi 深夜電台","Music"],
+             ["SpaceLaunch Live","Science & Tech"],["料理長 24H","Food"],
+             ["城市街頭 Cam","Travel"],["水族箱慢直播","Pets"]],
+    kick:   [["BoardroomBets","Slots"],["MidnightPoker","Poker"],
+             ["RallyStage","Racing"],["SunsetLounge","Just Chatting"]],
+    tiktok: [["@dancefloor.hk","Dance"],["@makeup.mika","Beauty"],
+             ["@streetfood.tw","Food"],["@puppy.cam","Pets"]],
+  };
+  const peak = {twitch:78000, youtube:145000, kick:26000, tiktok:41000};
+  const streamers = [], platforms = {};
+  for (const p of Object.keys(R)) {
+    let sum = 0;
+    R[p].forEach(([n, c], i) => {
+      const v = Math.max(120, Math.round(peak[p] / Math.pow(i+1, 0.85)
+                                         * (0.8 + 0.4*hash(p+n))));
+      sum += v;
+      streamers.push({id:`${p}:${n.toLowerCase()}`, platform:p, name:n, viewers:v,
+                      title:c+" · 示範數據", category:c, url:"", language:"",
+                      avatar:"", channel_id:n.toLowerCase()});
+    });
+    platforms[p] = {ok:false, streamers:R[p].length, viewers:sum, demo:true,
+                    error:"讀唔到 JSON: " + err};
+  }
+  streamers.sort((a,b) => b.viewers - a.viewers);
+  return {
+    generated_at: new Date().toISOString().slice(0,19) + "Z",
+    source: "demo", localDemo: true, fetchError: err,
+    total_viewers: streamers.reduce((a,s) => a+s.viewers, 0),
+    counted_streamers: streamers.length,
+    platforms_ok: [], platforms, streamers,
+  };
+}
+
 // ══ 攞數據 ══════════════════════════════════════════════════════════════
 async function load(){
   let d;
@@ -696,11 +740,8 @@ async function load(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     d = await r.json();
   } catch (e) {
-    $("nm").textContent = "攞唔到數據";
-    $("subt").textContent = String(e.message||e);
-    $("foot").innerHTML = `<span class="warn">✕ 讀唔到 ${esc(CFG.data)}</span>` +
-      `本地開檔要用 http (python3 -m http.server)，唔可以 file:// 直接開。`;
-    return;
+    // 唔好死喺度: 用內建示範數據入場, 但係要講明。
+    d = localDemo(String(e.message || e));
   }
   // 記住上一次嘅數字, 用嚟顯示 ▲▼
   if (snap) for (const s of snap.streamers) prevViewers.set(s.id, s.viewers);

@@ -130,6 +130,41 @@ if (!window.Tube3D || !Tube3D.supported()) {
 
 let hall = null, snap = null, focusV = null;
 
+/** file:// 直接 double-click 開嗰陣, 瀏覽器會擋 fetch(data/videos.json)。
+    用內建示範片單頂住 (標題全部虛構), 畫面照寫明。
+    要真數據就行 `python3 serve.py`。 */
+function localDemo(err){
+  const K = [
+    ["【4K】深夜城市散步 · 香港中環","夜行頻道",1240000,1320],
+    ["15 分鐘搞掂一餐：蒜香白酒炒蜆","廚房日常",842000,903],
+    ["我用 100 蚊挑戰一星期伙食","慳錢實驗室",2310000,1105],
+    ["新機開箱：真係值得換？","科技碎碎念",566000,742],
+    ["Lo-Fi 讀書歌單 · 3 小時不間斷","Study Room",4120000,10800],
+    ["九龍城寨遺址：一段被拆走嘅歷史","城市考古",1780000,1620],
+    ["貓貓第一次見到雪","毛孩日常",6450000,186],
+    ["台南五日四夜，食到爆","食旅日記",987000,1520],
+    ["Excel 十個你未用過嘅功能","返工求生",1150000,880],
+    ["凌晨三點嘅便利店","短片劇場",733000,420],
+    ["香港行山 · 大東山芒草季","山系頻道",664000,1390],
+    ["懷舊遊戲機修復實錄","電子維修",289000,1720],
+    ["零基礎學水彩：畫一朵花","顏料箱",376000,1150],
+    ["小學雞數學題，成年人竟然答錯","腦力操場",3020000,640],
+    ["由設計到落地：一張櫈嘅誕生","做嘢的人",198000,1260],
+  ];
+  return {
+    generated_at: new Date().toISOString().slice(0,19) + "Z",
+    source: "demo", localDemo: true, feed: "demo",
+    note: "呢啲係內建示範數據（標題全部虛構）。讀唔到 " + CFG.data +
+          " — 想要真 YouTube 片單，行 `python3 serve.py`。",
+    regions: ["DEMO"], count: K.length, errors: {"讀唔到 JSON": err},
+    videos: K.map(([t, ch, v, d], i) => ({
+      id:"", title:t, channel:ch, channel_id:"",
+      views: Math.round(v / (1 + i*0.06)), likes: 0, published: "",
+      duration: d, thumb: "", url: "", region: "DEMO", live: i === 6,
+    })),
+  };
+}
+
 // ── 攞數據 ──────────────────────────────────────────────────────────────
 async function load(){
   try {
@@ -138,6 +173,8 @@ async function load(){
     if (!r.ok) throw new Error("HTTP " + r.status);
     snap = await r.json();
   } catch (e) {
+    // file:// double-click 開: 直接用內建示範數據入場, 唔好卡住個人。
+    if (location.protocol === "file:") { boot(localDemo(String(e.message || e))); return; }
     // ⚠️ #veil 一開始就係冚住成版 (WebGL2 唔支援嗰個訊息靠佢),
     //    所以錯咗一定要寫入 veil 度 —— 唔係就變咗一塊撳唔甩嘅黑屏。
     $("sub").textContent = "讀唔到 " + CFG.data;
@@ -151,12 +188,18 @@ async function load(){
          <br>· GitHub Pages 未部署好，或者 <code>data/videos.json</code> 未 commit
          <br>· <code>?data=</code> 指錯咗位</p>
        <button class="go" id="retry">再試一次</button>
-       <button class="go ghost" id="skip">照入場（空大堂）</button>`;
+       <button class="go ghost" id="demoBtn">用示範數據入場</button>`;
     $("veil").classList.remove("off");
     $("retry").onclick = () => { $("veilBody").innerHTML = "<h2>載入緊…</h2>"; load(); };
-    $("skip").onclick = () => $("veil").classList.add("off");
+    $("demoBtn").onclick = () => boot(localDemo(String(e.message || e)));
     return;
   }
+  boot(snap);
+}
+
+/** 有數據 (真嘅定示範) 就入場。 */
+function boot(d){
+  snap = d;
   const vids = (snap.videos || []).slice(0, 60);
   $("sub").textContent =
     `${vids.length} 條片　·　${(snap.regions||[]).join(" / ")}　·　行埋入去揀片`;

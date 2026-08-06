@@ -137,9 +137,8 @@ python3 -m streamer_arena.collect --demo
 export TWITCH_CLIENT_ID=xxx TWITCH_CLIENT_SECRET=yyy YOUTUBE_API_KEY=zzz
 python3 -m streamer_arena.collect
 
-# 3. 開個 http server 睇 (⚠️ 唔可以 file:// 直接開, fetch 會俾瀏覽器擋)
-python3 -m http.server 8899
-# 跟住開 http://localhost:8899/arena.html
+# 3. 開嚟睇 (serve.py 會自動起 server + 彈瀏覽器)
+python3 serve.py arena
 ```
 
 其他選項：`--top 100`、`--platforms twitch,youtube`、`--out 邊度.json`、`--no-history`。
@@ -183,6 +182,33 @@ python3 -m http.server 8899
 | 北京鳥巢 | 91,000 |
 
 （都係約數 / 演唱會設定下嘅常見容量，用嚟感受規模，唔係精確工程數據。）
+
+---
+
+## 本機開嚟睇（唔使 GitHub Pages）
+
+```bash
+git clone -b claude/streamer-viewer-visualization-hmhkzf https://github.com/uscswa521-art/horse
+cd horse
+python3 serve.py            # 影片大堂
+python3 serve.py arena      # 演唱會場館
+python3 serve.py wall       # 直播主牆
+```
+
+`serve.py` 會自動：**冇數據就即刻整份示範數據**（環境變數有 API key 就攞真數據）→
+起個本機 server（port 用咗就自動搵第二個）→ 彈個瀏覽器出嚟。`Ctrl+C` 收工。
+
+有 key 就咁樣行，攞真數據：
+
+```bash
+export TWITCH_CLIENT_ID=xxx TWITCH_CLIENT_SECRET=yyy YOUTUBE_API_KEY=zzz
+python3 serve.py --live
+```
+
+### 想 double-click 直接開？得
+兩版都有 `file://` fallback —— 直接 double-click `arena.html` / `tube3d.html`
+一樣入到場，不過 `file://` 之下瀏覽器會擋 `fetch()`，讀唔到 `data/*.json`，
+所以會用**內建示範數據**（畫面會寫明）。要真數據就一定要行 `serve.py`。
 
 ---
 

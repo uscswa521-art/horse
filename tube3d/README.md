@@ -94,9 +94,8 @@ export YOUTUBE_API_KEY=xxx
 python3 -m tube3d.collect --regions HK,US --limit 24
 python3 -m tube3d.collect --channels @mkbhd,@veritasium --per-channel 6
 
-# 3. 開 http server (⚠️ 唔可以 file:// 直接開)
-python3 -m http.server 8899
-# 開 http://localhost:8899/tube3d.html
+# 3. 開嚟睇 (serve.py 會自動起 server + 彈瀏覽器)
+python3 serve.py
 ```
 
 ### URL 參數
@@ -119,6 +118,33 @@ python3 -m http.server 8899
 一日限額 10,000。預設 3 個地區 × 每 30 分鐘 = 約 **144 units/日**，
 就算加 10 個頻道都仲有大量剩。
 （注意同 `streamer_arena` 共用同一個 key，嗰邊用緊約 7,300/日。）
+
+---
+
+## 本機開嚟睇（唔使 GitHub Pages）
+
+```bash
+git clone -b claude/streamer-viewer-visualization-hmhkzf https://github.com/uscswa521-art/horse
+cd horse
+python3 serve.py            # 影片大堂
+python3 serve.py arena      # 演唱會場館
+python3 serve.py wall       # 直播主牆
+```
+
+`serve.py` 會自動：**冇數據就即刻整份示範數據**（環境變數有 API key 就攞真數據）→
+起個本機 server（port 用咗就自動搵第二個）→ 彈個瀏覽器出嚟。`Ctrl+C` 收工。
+
+有 key 就咁樣行，攞真數據：
+
+```bash
+export TWITCH_CLIENT_ID=xxx TWITCH_CLIENT_SECRET=yyy YOUTUBE_API_KEY=zzz
+python3 serve.py --live
+```
+
+### 想 double-click 直接開？得
+兩版都有 `file://` fallback —— 直接 double-click `arena.html` / `tube3d.html`
+一樣入到場，不過 `file://` 之下瀏覽器會擋 `fetch()`，讀唔到 `data/*.json`，
+所以會用**內建示範數據**（畫面會寫明）。要真數據就一定要行 `serve.py`。
 
 ---
 
