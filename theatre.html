@@ -1,0 +1,406 @@
+<!DOCTYPE html><html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>一號影廳 · VELOUR</title>
+<meta name="description" content="入場、揀個位坐低、燈暗、幕開 —— 喺一間 3D 精品影院度睇 YouTube。">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Noto+Sans+HK:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<style>
+:root{
+  --bg:#050506; --ink:#14151A; --paper:#F3EBDD; --paper2:#EBE2D2; --brass:#B08D57; --brass-dim:#6E5636;
+  --ivory:#F3EBDD; --dim:#9A928A; --dim2:#6E665E; --burg:#6A1E2A;
+  --disp:"Cormorant Garamond","Times New Roman","Songti TC","PingFang HK",serif;
+  --body:"Noto Sans HK",-apple-system,"PingFang HK","Microsoft JhengHei","Noto Sans CJK TC",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --ui:cubic-bezier(.22,1,.36,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{color:var(--ivory);font-family:var(--body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;user-select:none}
+canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:default;transition:filter .6s var(--ui)}
+body.load canvas#gl{filter:blur(6px) brightness(.45)}
+body.choose canvas#gl.hover{cursor:pointer} body.choose canvas#gl.occ{cursor:not-allowed}
+
+/* CSS3D 層 */
+#css3d{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:2}
+#cam{position:absolute;left:0;top:0;width:0;height:0;transform-style:preserve-3d}
+#screen{position:absolute;left:0;top:0;width:1600px;height:900px;background:#000;transform-style:preserve-3d;backface-visibility:hidden;pointer-events:none;visibility:hidden}
+body.seated #screen{pointer-events:auto}
+#screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+/* 後製 (蓋住 iframe): 暗角 + 12fps 微粒 */
+.vig{position:fixed;inset:0;pointer-events:none;z-index:3;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:3;opacity:.04;background-repeat:repeat}
+body.lo .grain{display:none}
+.dip{position:fixed;inset:0;background:#050506;z-index:40;pointer-events:none;opacity:1;transition:opacity .3s ease}
+.dip.off{opacity:0}
+
+/* ── 表面 ── PAPER / CHIP / 藥丸 ── */
+.paper{background:var(--paper);color:var(--ink);box-shadow:0 20px 60px -30px #000}
+.chip{background:rgba(20,21,26,.85);color:var(--ivory);border:1px solid var(--brass);font-size:13px;font-weight:500;padding:6px 10px;white-space:nowrap}
+.pill{pointer-events:auto;cursor:pointer;height:44px;padding:0 18px;border:1px solid var(--brass);border-radius:2px;background:transparent;color:var(--ivory);
+  font-family:var(--body);font-weight:500;font-size:13px;letter-spacing:.06em;transition:background .25s var(--ui) .09s}
+.pill:hover{background:rgba(176,141,87,.12)} .pill:active{background:rgba(176,141,87,.24)}
+.hud{position:fixed;z-index:10;pointer-events:none}
+.fade{opacity:0;transition:opacity .45s var(--ui)} .fade.on{opacity:1}
+.hidden{display:none!important}
+.sc{font-family:var(--disp);font-variant:small-caps;letter-spacing:.22em;font-weight:600}
+.mono{font-family:var(--mono);font-weight:500;font-size:12px;letter-spacing:.04em;font-variant-numeric:tabular-nums}
+
+/* ── 入場券 ── */
+#gate{inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:20}
+#stub{pointer-events:auto;width:340px;height:200px;position:relative;padding:18px 22px 16px 30px;display:flex;flex-direction:column;
+  border:1px solid var(--brass);box-shadow:0 30px 80px -30px #000,inset 0 0 0 3px var(--paper),inset 0 0 0 4px var(--brass);
+  -webkit-mask:radial-gradient(circle at 0 50%,transparent 0,transparent 5px,#000 6px) 0 0/100% 18px; mask:radial-gradient(circle at 0 50%,transparent 0,transparent 5px,#000 6px) 0 0/100% 18px}
+#stub:after{content:"";position:absolute;right:12px;top:16px;bottom:16px;width:22px;
+  background:repeating-linear-gradient(90deg,var(--ink) 0 1px,transparent 1px 2px,var(--ink) 2px 4px,transparent 4px 5px,var(--ink) 5px 6px,transparent 6px 9px);opacity:.85}
+#stub .v{font-size:13px;color:var(--ink)} #stub .v span{font-family:var(--body);font-weight:500;letter-spacing:.06em;font-variant:normal}
+#stub .lab{color:var(--dim);margin-top:8px} #stub .film{font-weight:500;font-size:16px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;height:42px}
+#stub .row{display:flex;gap:18px;margin-top:6px;color:var(--ink)}
+#stub .row b{display:block;color:var(--dim);font-weight:500;font-size:11px}
+#enter{margin-top:auto;height:44px;width:calc(100% - 26px);background:var(--brass);color:var(--ivory);border:0;font-family:var(--body);font-weight:700;font-size:15px;letter-spacing:.12em;cursor:pointer}
+#enter:hover{background:#c09b62}
+#again{pointer-events:auto;font-size:13px}
+#gateHint{font-size:13px;color:var(--dim)}
+.tear{animation:tear .45s var(--ui) forwards} @keyframes tear{to{opacity:0;transform:translateY(-10px) rotate(6deg)}}
+
+/* ── 跳過 / 字幕 / 前往 ── */
+#skip{right:16px;bottom:14px;pointer-events:auto;cursor:pointer;font-size:13px;color:var(--dim);height:44px;line-height:44px;padding:0 10px}
+#skip:hover{color:var(--ivory)}
+#cap{left:0;right:0;bottom:64px;height:60px;display:flex;align-items:center;justify-content:center;font-size:22px;letter-spacing:.06em;color:var(--ivory);text-align:center}
+#cap .sc{font-size:22px;letter-spacing:.25em;margin-right:.4em}
+#going{left:50%;top:16px;transform:translateX(-50%)}
+
+/* ── 票根標籤 (top-left) ── */
+#tab{left:16px;top:16px;width:180px;height:54px;padding:8px 10px 6px 16px;pointer-events:auto;cursor:pointer;
+  -webkit-mask:radial-gradient(circle at 0 50%,transparent 0,transparent 3px,#000 4px) 0 0/100% 12px;mask:radial-gradient(circle at 0 50%,transparent 0,transparent 3px,#000 4px) 0 0/100% 12px;transition:opacity .45s var(--ui)}
+#tab .l1{font-size:12px} #tab .l2{font-size:11.5px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+#tab.dim{opacity:.35}
+.stamp{display:inline-block;animation:stamp .3s var(--ui)} @keyframes stamp{from{transform:scale(1.4)}to{transform:scale(1)}}
+#progBtn{right:16px;top:16px} #bestBtn{left:50%;bottom:24px;transform:translateX(-50%)}
+#bar{left:50%;bottom:24px;transform:translateX(-50%);display:flex;gap:12px;transition:opacity .24s var(--ui)}
+#bar.idle{opacity:0}
+#hover{position:fixed;z-index:11;pointer-events:none;opacity:0;transition:opacity .12s;transform:translate(12px,14px)}
+#hover.on{opacity:1}
+#mute{left:16px;bottom:16px;pointer-events:auto;cursor:pointer;font-size:11.5px;color:var(--dim)}
+#now{right:16px;bottom:80px;width:300px;padding:14px 16px;transition:opacity .45s var(--ui)}
+#now .t{font-weight:500;font-size:15px;line-height:1.3;margin:4px 0 2px} #now .m{font-size:11.5px;color:var(--dim2)} #now a{color:var(--brass);pointer-events:auto}
+#play{position:fixed;z-index:12;width:72px;height:72px;margin:-36px 0 0 -36px;border:1.5px solid var(--brass);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--brass);pointer-events:auto;cursor:pointer;font-size:13px;gap:2px}
+#play:before{content:"";width:0;height:0;border-left:16px solid var(--brass);border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px}
+
+/* ── 節目表 (紙) ── */
+#prog{inset:0;z-index:25;isolation:isolate;transform:translateZ(0);display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.35);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s var(--ui),visibility 0s linear .3s}
+#prog.on{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .3s var(--ui),visibility 0s}
+#sheet{width:520px;max-width:100vw;height:min(72vh,640px);display:flex;flex-direction:column;transform:translateY(40px);transition:transform .35s var(--ui);pointer-events:auto}
+#prog.on #sheet{transform:none}
+#sheet .hd{padding:18px 24px 12px;border-bottom:2px solid var(--brass);display:flex;align-items:baseline;gap:12px}
+#sheet .hd h2{font-family:var(--disp);font-weight:600;font-size:26px;letter-spacing:.06em;color:var(--ink)}
+#sheet .hd .mono{color:var(--dim2)} #sheet .hd .x{margin-left:auto;pointer-events:auto;cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--ink)}
+#list{overflow:auto;flex:1;padding:6px 0 10px}
+#list::-webkit-scrollbar{width:6px} #list::-webkit-scrollbar-thumb{background:var(--brass)}
+#list .sec{padding:12px 24px 4px;color:var(--dim2)}
+.row{display:grid;grid-template-columns:34px 40px 1fr auto;gap:12px;align-items:center;height:56px;padding:0 24px 0 21px;border-left:3px solid transparent;cursor:pointer;pointer-events:auto}
+.row:hover,.row.focus{border-left-color:var(--brass);background:var(--paper2)}
+.row .no{font-family:var(--disp);font-weight:600;font-size:18px;color:var(--ink)} .row .th{width:40px;height:22px;object-fit:cover;background:#ddd3c2} .row .dia{color:var(--brass);text-align:center}
+.row .t{font-weight:500;font-size:15px;line-height:1.25;color:var(--ink);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden} .row .m{font-size:11.5px;color:var(--dim2)}
+.row .d{color:var(--dim2)} .row.now .d{color:var(--brass)} .row .live{color:var(--burg);margin-right:6px}
+#sheet .ft{padding:10px 24px 14px;border-top:1px solid var(--brass);font-size:11.5px;color:var(--dim2)}
+#info{right:16px;top:70px;text-align:right;font-size:11.5px;color:var(--dim2);max-width:44vw;line-height:1.7}
+#info .w{color:#C9A15A}
+@media(max-width:720px){ #info{display:none} #sheet{width:100vw} #now{width:calc(100vw - 32px);right:16px} }
+</style></head>
+<body class="load">
+
+<canvas id="gl"></canvas>
+<div id="css3d"><div id="cam"><div id="screen"><iframe id="yt" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="screen"></iframe></div></div></div>
+<div class="vig"></div><div class="grain" id="grain"></div>
+<div class="dip" id="dip"></div>
+
+<!-- 入場券 -->
+<div class="hud" id="gate">
+  <div class="paper" id="stub">
+    <div class="v sc">Velour · <span>一號影廳</span></div>
+    <div class="lab mono">今場放映</div>
+    <div class="film" id="stubFilm">—</div>
+    <div class="row mono"><div><b>場次</b><span id="stubTime">—</span></div><div><b>座位</b><span id="stubSeat">— 未揀</span></div><div><b>票號</b><span id="stubNo">—</span></div></div>
+    <button id="enter">入場</button>
+  </div>
+  <button class="pill hidden" id="again">上次座位 — · 直接入座</button>
+  <div id="gateHint">撳「入場」開始 · 首次會有聲音</div>
+</div>
+
+<div class="hud hidden" id="skip">跳過 ›</div>
+<div class="hud fade" id="cap"></div>
+<div class="hud chip fade" id="going"></div>
+<div class="hud paper fade" id="tab"><div class="l1 mono" id="tabL1">一號影廳 · 座位 —</div><div class="l2" id="tabL2">今場放映：—</div></div>
+<button class="hud pill fade" id="progBtn">節目表</button>
+<button class="hud pill fade" id="bestBtn">幫我揀個好位</button>
+<div class="hud fade" id="bar"><button class="pill" id="hopL">◀ 位</button><button class="pill" id="standBtn">起身</button><button class="pill" id="progBtn2">節目表</button><button class="pill" id="hopR">位 ▶</button></div>
+<div class="chip" id="hover"></div>
+<div class="hud" id="mute"></div>
+<div class="hud paper fade" id="now"><div class="mono" style="color:var(--dim2)">現正放映</div><div class="t" id="nowT"></div><div class="m" id="nowM"></div><div class="m" id="nowX">P · 節目表 換片</div></div>
+<div id="play" class="hidden">播放</div>
+<div class="hud" id="info"></div>
+
+<div class="hud" id="prog"><div class="paper" id="sheet">
+  <div class="hd"><h2>節目表</h2><div class="mono" id="progCount">今日 · 0 套</div><div class="x" id="progX">閂</div></div>
+  <div id="list"></div>
+  <div class="ft" id="progFt"></div>
+</div></div>
+
+<script src="theatre-tex.js"></script>
+<script src="theatre-audio.js"></script>
+<script src="theatre.js"></script>
+<script>
+(() => {
+"use strict";
+const P = new URLSearchParams(location.search);
+const CFG = { data: P.get("data") || "data/videos.json", v: P.get("v") || "", q: P.get("q") || "", crowd: P.get("crowd"), dolly: P.get("dolly") !== "0" && !matchMedia("(prefers-reduced-motion: reduce)").matches };
+const $ = id => document.getElementById(id);
+const esc = s => String(s??"").replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+const zh = n => n >= 1e8 ? (n/1e8).toFixed(1)+"億" : n >= 1e4 ? (n/1e4).toFixed(1)+"萬" : String(n|0);
+const dur = s => { s|=0; const h=s/3600|0, m=(s%3600)/60|0; return h ? `${h}:${String(m).padStart(2,"0")}:${String(s%60).padStart(2,"0")}` : `${m}:${String(s%60).padStart(2,"0")}`; };
+const nowStr = () => { const d = new Date(Date.now() + 5*60000); d.setMinutes(Math.ceil(d.getMinutes()/5)*5, 0); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+const store = { get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch(e){} } };
+const isTouch = matchMedia("(pointer: coarse)").matches;
+
+// ── 引擎唔喺度 / 冇 WebGL2 ─────────────────────────────────────────────
+function gateMsg(h){ $("stub").innerHTML = `<div class="v sc">Velour · <span>一號影廳</span></div><div style="font-size:12.5px;line-height:1.6;margin-top:10px">${h}</div>`; $("gateHint").textContent = ""; document.body.classList.remove("load"); }
+if (!window.Theatre) {
+  const zip = /[\\/]Temp[\\/]|\.zip/i.test(location.href);
+  gateMsg(`載入唔到 <b>theatre.js</b>。${zip ? "你多數係喺 ZIP 入面直接 double-click 咗 —— Windows 只會將一個檔解壓去 Temp。" : ""}<br>先將成個 ZIP <b>解壓縮全部</b>，再喺解壓出嚟嗰個資料夾 double-click theatre.html。`);
+} else if (!Theatre.supported()) {
+  gateMsg(`瀏覽器開唔到 <b>WebGL2</b>。Chrome / Edge：設定 → 系統 → 開返「使用硬件加速」再重開；或者開 chrome://gpu 睇 WebGL2 嗰行。`);
+} else main();
+
+function main(){
+// ── 數據 ─────────────────────────────────────────────────────────────────
+const DEMO = [["【4K】深夜城市散步 · 香港中環","夜行頻道",1240000,1320],["15 分鐘搞掂一餐：蒜香白酒炒蜆","廚房日常",842000,903],["我用 100 蚊挑戰一星期伙食","慳錢實驗室",2310000,1105],
+  ["新機開箱：真係值得換？","科技碎碎念",566000,742],["Lo-Fi 讀書歌單 · 3 小時不間斷","Study Room",4120000,10800],["九龍城寨遺址：一段被拆走嘅歷史","城市考古",1780000,1620],
+  ["貓貓第一次見到雪","毛孩日常",6450000,186],["台南五日四夜，食到爆","食旅日記",987000,1520],["Excel 十個你未用過嘅功能","返工求生",1150000,880],["凌晨三點嘅便利店","短片劇場",733000,420],
+  ["香港行山 · 大東山芒草季","山系頻道",664000,1390],["懷舊遊戲機修復實錄","電子維修",289000,1720]];
+const localDemo = err => ({ source:"demo", localDemo:true, regions:["DEMO"], errors:{"讀唔到 JSON":err},
+  note:"呢啲係內建示範數據（標題全部虛構）。讀唔到 "+CFG.data+" —— 要真 YouTube 片單，行 python3 serve.py。",
+  videos: DEMO.map(([t,ch,v,d],i) => ({id:"", title:t, channel:ch, views:Math.round(v/(1+i*0.06)), duration:d, thumb:"", url:"", live:i===6})) });
+let snap = null, films = [], sel = -1, playing = -1, isPlaying = false, embedRefused = false, muted = false;
+const A = window.TheatreAudio ? TheatreAudio.create() : null;
+
+// ── 建場 ─────────────────────────────────────────────────────────────────
+const T = Theatre.create($("gl"), $("css3d"), $("screen"), {
+  onPhase(ph, arg){
+    if (ph === "footstep") { A && A.event("footstep", arg); return; }
+    if (ph === "bell") { A && A.event("bell"); return; }
+    if (ph === "lo") { document.body.classList.add("lo"); return; }
+    document.body.className = ph + (document.body.classList.contains("lo") ? " lo" : "");
+    if (ph === "walk") { A && A.setState({preShow:true, playing:false, inHall:false, house:1}); setTimeout(() => A && A.event("door"), 300); setTimeout(() => A && A.setState({inHall:true, preShow:true, playing:false, house:1}), 2900);
+      $("skip").classList.remove("hidden"); setTimeout(() => caption("Velour", "歡迎光臨 · 一號影廳", 2200), 1200); }
+    if (ph === "choose") onChoose(arg);
+    if (ph === "glide") { if (arg) { $("going").textContent = `前往 ${arg.code}…`; $("going").classList.add("on"); } hideChoose(); }
+    if (ph === "seated") onSeated(arg);
+  },
+  onHover(seat, {kb} = {}){
+    const h = $("hover"), cv = $("gl");
+    cv.classList.toggle("hover", !!seat && !seat.occupied); cv.classList.toggle("occ", !!seat && seat.occupied);
+    if (!seat) { h.classList.remove("on"); return; }
+    h.textContent = seat.occupied ? "已有人" : `${seat.code} · 撳一下坐低${seat.reco ? " · 推薦" : ""}`; h.classList.add("on");
+    if (kb) { const p = T._proj(seat.x, seat.y+0.9, seat.z); if (p) { h.style.left = p[0]+"px"; h.style.top = p[1]+"px"; } }
+    else if (T.mouse.x >= 0) { h.style.left = T.mouse.x+"px"; h.style.top = T.mouse.y+"px"; }
+  },
+  onCurtain(v){ if (v < 0.01 && pendingSrc) { setSrc(pendingSrc); pendingSrc = null; } },
+  onCurtainClick(){ showProg(true); },
+});
+T.setTextures(window.TheatreTex);
+if (CFG.q === "lo") { T.setQuality(true); document.body.classList.add("lo"); }
+addEventListener("mousemove", e => { const h = $("hover"); if (h.classList.contains("on") && T.hover >= 0 && !T.kbSel) { h.style.left = e.clientX+"px"; h.style.top = e.clientY+"px"; } });
+
+async function load(){
+  try { const sep = CFG.data.includes("?") ? "&" : "?"; const r = await fetch(CFG.data + sep + "t=" + Date.now(), {cache:"no-store"}); if (!r.ok) throw new Error("HTTP " + r.status); snap = await r.json(); }
+  catch (e) { snap = localDemo(String(e.message||e)); }
+  films = (snap.videos || []).slice(0, 60);
+  // 今場放映: ?v= → 第一條直播 → 最多人睇
+  sel = CFG.v ? films.findIndex(v => v.id === CFG.v) : -1;
+  if (sel < 0) sel = films.findIndex(v => v.live);
+  if (sel < 0) sel = films.reduce((b,v,i) => (v.views||0) > (films[b]?.views||0) ? i : b, 0);
+  $("stubFilm").textContent = films[sel] ? films[sel].title : "—"; $("stubTime").textContent = nowStr(); $("stubNo").textContent = String(100000 + (Date.now() % 900000));
+  const last = store.get("velour.seat"); if (last && T.seats.find(s => s.code === last)) { $("again").textContent = `上次座位 ${last} · 直接入座`; $("again").classList.remove("hidden"); }
+  const errs = Object.entries(snap.errors || {});
+  $("info").innerHTML = (snap.source === "demo" ? `<div class="w">示範數據 · 未接 YouTube API</div>` : errs.length ? `<div class="w">部分來源攞唔到</div>` : "") + `<div>${esc(snap.note||"")}</div>` + (errs.length ? `<div>${errs.map(([k,v]) => esc(k)+": "+esc(String(v).slice(0,60))).join("　")}</div>` : "");
+  const top = films.slice().sort((a,b) => (b.live?1:0)-(a.live?1:0) || (b.views||0)-(a.views||0)).slice(0,6);
+  T.setProgramme({posters: top, marquee: films[sel] ? `今場放映 · ${films[sel].title}` : "VELOUR · 一號影廳"});
+  T.setAudience(CFG.crowd != null ? +CFG.crowd : Math.min(36, 18 + Math.floor(2*Math.log10(Math.max(1, films[sel]?.views||1)))), 11);
+  A && A.setOccupied(T.seats.filter(s => s.occupied).map(s => ({x:s.x, z:s.z})));
+  renderProg();
+  $("tabL2").textContent = `今場放映：${films[sel]?.title || "—"}`;
+  $("progFt").textContent = snap.source === "demo" ? "示範數據 · 未接 YouTube API" : `YouTube · 更新於 ${(snap.generated_at||"").slice(11,16)}`;
+}
+
+// ── 入場 ─────────────────────────────────────────────────────────────────
+$("enter").onclick = () => start(false);
+$("again").onclick = () => start(true);
+addEventListener("keydown", e => { if (e.key === "Enter" && !$("gate").classList.contains("hidden")) start(false); });
+function start(direct){
+  if (A) { A.start(); }
+  $("stub").classList.add("tear"); $("again").classList.add("hidden"); $("gateHint").classList.add("hidden");
+  setTimeout(() => $("gate").classList.add("hidden"), 460);
+  document.body.classList.remove("load");
+  T.house(1, 0.7); T.foot(true);
+  const last = store.get("velour.seat");
+  if (direct && last) { dip(1.0, () => { T.skip(); T.enter({returning:true}); T.skip(); const s = T.seats.find(x => x.code === last); if (s) { if (s.occupied) s.occupied = false; T.pickSeat(s.i); } }); return; }
+  T.enter({returning: !!last});
+  if (!CFG.dolly) T.skip();
+}
+$("skip").onclick = () => T.skip();
+function dip(sec, mid){ const d = $("dip"); d.classList.remove("off"); setTimeout(() => { mid && mid(); setTimeout(() => d.classList.add("off"), 60); }, sec*1000); }
+
+// ── 字幕 ─────────────────────────────────────────────────────────────────
+let capT = 0;
+function caption(sc, zhText, ms){ $("cap").innerHTML = (sc ? `<span class="sc">${esc(sc)}</span>` : "") + esc(zhText); $("cap").classList.add("on"); clearTimeout(capT); capT = setTimeout(() => $("cap").classList.remove("on"), ms); }
+
+// ── 揀位 ─────────────────────────────────────────────────────────────────
+function onChoose(arg){
+  $("skip").classList.add("hidden"); $("going").classList.remove("on");
+  for (const id of ["tab","progBtn","bestBtn"]) $(id).classList.add("on");
+  $("bar").classList.remove("on"); $("now").classList.remove("on");
+  if (!(arg && arg.stood)) { caption("", "揀個位坐低", 4000); T.startProbe(); }
+  if (!isPlaying) { T.house(1, 0.7); }
+  A && A.setState({preShow: !isPlaying, playing: isPlaying, inHall:true, house: isPlaying ? 0.12 : 1});
+}
+function hideChoose(){ $("bestBtn").classList.remove("on"); $("hover").classList.remove("on"); }
+$("bestBtn").onclick = () => T.pickSeat(T.bestSeat());
+$("tab").onclick = () => showProg(true);
+$("progBtn").onclick = $("progBtn2").onclick = () => showProg(true);
+$("standBtn").onclick = () => T.stand();
+$("hopL").onclick = () => T.hop(-1, 0); $("hopR").onclick = () => T.hop(1, 0);
+if (!isTouch) { $("hopL").classList.add("hidden"); $("hopR").classList.add("hidden"); }
+
+// ── 坐低 → 開場 ──────────────────────────────────────────────────────────
+let pendingSrc = null, showTimer = 0, barIdle = 0;
+function onSeated(s){
+  $("going").classList.remove("on");
+  $("tabL1").innerHTML = `一號影廳 · 座位 <span class="stamp">${esc(s.code)}</span>`; $("stubSeat").textContent = s.code;
+  store.set("velour.seat", s.code);
+  $("bar").classList.add("on");
+  A && A.event("creak");
+  A && A.setListener({x:s.x, z:s.z, yaw:s.yaw});
+  if (isPlaying) { T.house(0.12, 1.0); return; }        // 坐返落去, 片繼續播
+  T.house(0.45, 0.7);                                    // 房間留意到你坐低咗
+  A && A.setState({preShow:true, playing:false, inHall:true, house:0.45});
+  clearTimeout(showTimer);
+  showTimer = setTimeout(() => { if (!$("prog").classList.contains("on") && playing < 0) showStart(sel); }, 600);
+}
+/** 開場儀式: src 喺閂住嘅幕後面 set → 燈暗 → 幕開 → 光束 + 一下 thump。 */
+function showStart(i){
+  const v = films[i]; if (!v) return;
+  playing = i; renderProg();
+  setSrc(v);                                              // 0.0 s, 幕係閂住嘅
+  T.house(0.12, 1.0); T.foot(false);
+  A && A.setState({preShow:false, playing:true, inHall:true, house:0.12});
+  setTimeout(() => { T.curtain(true, 2.8); A && A.event("motor", {open:true, seconds:2.8}); }, 800);
+  setTimeout(() => { T.screen(true, 1.5); T.thump(); A && A.event("thump"); }, 1800);
+  setTimeout(() => nowCard(v), 3600);
+  setTimeout(() => { if (!isPlaying && !embedRefused && v.id && snap.source !== "demo") showPlayRing(true); }, 4500);   // 示範卡冇嘢可播
+  T.setMarquee(`現正放映 · ${v.title}`); $("tabL2").textContent = `現正放映：${v.title}`;
+  T.setScreenTint([0.788,0.839,0.941]);
+}
+function setSrc(v){
+  const yt = $("yt"); isPlaying = false; embedRefused = false; showPlayRing(false);
+  if (v.id) { yt.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&playsinline=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`; }
+  else { yt.removeAttribute("src"); yt.srcdoc = `<body style="margin:0;background:#050506;color:#B08D57;font-family:'Cormorant Garamond',Georgia,serif;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center"><div><div style="font-size:26px;letter-spacing:.3em;opacity:.6">DEMO</div><div style="font-size:64px;font-family:'Noto Sans HK',sans-serif;color:#F3EBDD;padding:20px 60px;line-height:1.3">${esc(v.title)}</div><div style="font-size:28px;letter-spacing:.2em;opacity:.7">${esc(v.channel)} · 示範數據冇真實影片</div></div></body>`; }
+}
+function nowCard(v){ $("nowT").textContent = v.title; $("nowM").textContent = `${v.channel}　·　${zh(v.views||0)} 次觀看${v.duration ? "　·　"+dur(v.duration) : ""}`;
+  $("nowX").innerHTML = embedRefused && v.url ? `<a href="${esc(v.url)}" target="_blank" rel="noopener">喺 YouTube 開 ↗</a>` : "P · 節目表 換片"; $("now").classList.add("on"); setTimeout(() => $("now").classList.remove("on"), 4000); }
+function showPlayRing(on){ const r = $("play"); r.classList.toggle("hidden", !on); }
+$("play").onclick = () => { showPlayRing(false); try { $("yt").contentWindow.postMessage(JSON.stringify({event:"command", func:"playVideo", args:[]}), "*"); } catch(e){} };
+// YouTube IFrame API (postMessage): 播放中 / 完 / 唔畀嵌入
+addEventListener("message", e => {
+  if (!/youtube/.test(String(e.origin))) return;
+  let d; try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+  if (!d) return;
+  if (d.event === "onReady" || d.event === "initialDelivery") { try { $("yt").contentWindow.postMessage(JSON.stringify({event:"listening", id:1, channel:"widget"}), "*"); } catch(err){} }
+  const st = d.event === "onStateChange" ? d.info : (d.event === "infoDelivery" && d.info && d.info.playerState != null ? d.info.playerState : null);
+  if (st === 1) { isPlaying = true; showPlayRing(false); A && A.setState({playing:true, preShow:false, inHall:true, house:0.12}); }
+  if (st === 0) onEnded();
+  if (d.event === "onError" && (d.info === 101 || d.info === 150)) { embedRefused = true; T.setMarquee("呢條片唔畀嵌入"); nowCard(films[playing] || {}); }
+});
+$("yt").addEventListener("load", () => { try { $("yt").contentWindow.postMessage(JSON.stringify({event:"listening", id:1, channel:"widget"}), "*"); } catch(e){} });
+function onEnded(){
+  isPlaying = false; T.curtain(false, 2.0); A && A.event("motor", {open:false, seconds:2}); T.screen(false, 1.5); T.house(0.45, 0.7);
+  A && A.setState({preShow:true, playing:false, inHall:true, house:0.45});
+  setTimeout(() => { const next = (playing + 1) % films.length; showProg(true, next, "下一場"); }, 2200);
+}
+/** 換片儀式 (5 s): 幕閂 → 換 src → 幕開。 */
+function changeFilm(i){
+  if (i === playing) return;
+  if (playing < 0 || T.phase !== "seated") { sel = i; $("stubFilm").textContent = films[i].title; $("tabL2").textContent = `今場放映：${films[i].title}`; T.setMarquee(`今場放映 · ${films[i].title}`);
+    if (T.phase === "seated") showStart(i); return; }
+  T.curtain(false, 2.0); T.screen(false, 1.5); A && A.event("motor", {open:false, seconds:2});
+  playing = i; renderProg(); isPlaying = false;
+  setTimeout(() => { setSrc(films[i]); T.setMarquee(`現正放映 · ${films[i].title}`); $("tabL2").textContent = `現正放映：${films[i].title}`;
+    T.setAudience(Math.min(36, 18 + Math.floor(2*Math.log10(Math.max(1, films[i].views||1)))), 11 + i); A && A.setOccupied(T.seats.filter(s => s.occupied).map(s => ({x:s.x, z:s.z}))); }, 2000);
+  setTimeout(() => { T.curtain(true, 3.0); A && A.event("motor", {open:true, seconds:3}); T.screen(true, 1.5); }, 2050);
+  setTimeout(() => nowCard(films[i]), 5000);
+}
+
+// ── 節目表 ───────────────────────────────────────────────────────────────
+let focusRow = -1;
+function renderProg(header){
+  const live = films.map((v,i) => [v,i]).filter(([v]) => v.live), hot = films.map((v,i)=>[v,i]).sort((a,b) => (b[0].views||0)-(a[0].views||0)).slice(0,10);
+  const row = ([v,i]) => `<div class="row${i===playing?" now":""}" data-i="${i}"><div class="no">${String(i+1).padStart(2,"0")}</div>
+      ${v.thumb ? `<img class="th" src="${esc(v.thumb)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=dia>◆</div>'">` : `<div class="dia">◆</div>`}
+      <div><div class="t">${v.live ? `<span class="live">●</span>` : ""}${esc(v.title)}</div><div class="m">${esc(v.channel)} · ${zh(v.views||0)} 次觀看${v.live ? " · 直播" : ""}</div></div>
+      <div class="mono d">${i===playing ? "放映中" : v.duration ? dur(v.duration) : ""}</div></div>`;
+  const sec = (name, arr) => arr.length ? `<div class="sec mono">${name}</div>` + arr.map(row).join("") : "";
+  $("list").innerHTML = (header ? `<div class="sec mono">${esc(header)}</div>` : "") + sec("直播中", live) + sec("熱門", hot) + sec("全部", films.map((v,i)=>[v,i]));
+  $("progCount").textContent = `今日 · ${films.length} 套`;
+  for (const el of $("list").querySelectorAll(".row")) el.onclick = () => { const i = +el.dataset.i; if (i === playing) return; showProg(false); changeFilm(i); };
+}
+function showProg(on, focus, header){ if (on && header !== undefined) renderProg(header); $("prog").classList.toggle("on", on); focusRow = -1;
+  if (on && focus != null) { const el = $("list").querySelector(`.row[data-i="${focus}"]`); if (el) { el.classList.add("focus"); el.scrollIntoView({block:"center"}); focusRow = focus; } } }
+$("progX").onclick = () => showProg(false);
+$("prog").addEventListener("click", e => { if (e.target === $("prog")) showProg(false); });
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase(), open = $("prog").classList.contains("on");
+  if (k === "p") { showProg(!open); return; }
+  if (k === "m") { if (A) { muted = A.toggleMute(); $("mute").textContent = muted ? "靜音" : "有聲"; } return; }
+  if (open) { const rows = [...$("list").querySelectorAll(".row")]; const cur = rows.findIndex(r => r.classList.contains("focus"));
+    if (k === "escape") showProg(false);
+    else if (k === "arrowdown" || k === "arrowup") { e.preventDefault(); const n = Math.max(0, Math.min(rows.length-1, cur + (k === "arrowdown" ? 1 : -1))); rows.forEach(r => r.classList.remove("focus")); rows[n].classList.add("focus"); rows[n].scrollIntoView({block:"nearest"}); }
+    else if (k === "enter" && cur >= 0) rows[cur].click();
+    else if (/^[1-9]$/.test(k)) { const r = rows[+k-1]; r && r.click(); }
+    e.stopPropagation(); return; }
+  if (k === "escape" && T.phase === "seated") T.stand();
+}, true);
+if (A && A.available) { $("mute").textContent = "有聲"; $("mute").onclick = () => { muted = A.toggleMute(); $("mute").textContent = muted ? "靜音" : "有聲"; }; }
+addEventListener("pointerdown", () => A && A.resume());
+
+// ── 每格 ─────────────────────────────────────────────────────────────────
+function resize(){ T.resize(innerWidth, innerHeight, Math.min(document.body.classList.contains("lo") ? 1 : 1.5, devicePixelRatio||1)); }
+addEventListener("resize", resize);
+// 12fps 微粒
+(function grain(){ const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d"), im = g.createImageData(256,256);
+  for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (Math.random()*90-45)|0; im.data[i]=im.data[i+1]=im.data[i+2]=v; im.data[i+3]=255; }
+  g.putImageData(im, 0, 0); $("grain").style.backgroundImage = `url(${c.toDataURL()})`;
+  setInterval(() => { $("grain").style.backgroundPosition = `${(Math.random()*256)|0}px ${(Math.random()*256)|0}px`; }, 83); })();
+let t0 = performance.now(), lastMove = 0;
+addEventListener("mousemove", () => { lastMove = performance.now(); $("bar").classList.remove("idle"); $("tab").classList.remove("dim"); });
+function frame(now){
+  requestAnimationFrame(frame);
+  T.render((now - t0)/1000);
+  // iframe clip-path 跟幕布前緣
+  const clip = T.curtainClip(), sc = $("screen");
+  const cp = clip.hidden ? "inset(0 100% 0 0)" : `inset(0 ${(clip.R*100).toFixed(2)}% 0 ${(clip.L*100).toFixed(2)}%)`;
+  if (sc.__cp !== cp) { sc.__cp = cp; sc.style.clipPath = cp; sc.style.visibility = clip.hidden ? "hidden" : "visible"; }
+  // ▶ 播放 環放喺幕中心
+  if (!$("play").classList.contains("hidden")) { const r = T.projectedScreenRect(); if (r) { $("play").style.left = (r.l+r.r)/2 + "px"; $("play").style.top = (r.t+r.b)/2 + "px"; } }
+  // 坐低 + 播緊: 4 s 冇郁滑鼠就收埋 bar / 票根變淡 (電腦先)
+  if (!isTouch && T.phase === "seated" && isPlaying && now - lastMove > 4000) { $("bar").classList.add("idle"); $("tab").classList.add("dim"); }
+  // 坐低嗰陣, 幕範圍內畀 iframe 收滑鼠, 幕以外 canvas 收 (drag-look)
+  if (T.phase === "seated") { const r = T.projectedScreenRect(); const inside = r && T.mouse.x >= r.l && T.mouse.x <= r.r && T.mouse.y >= r.t && T.mouse.y <= r.b; $("gl").style.pointerEvents = inside && isPlaying ? "none" : "auto"; }
+  else $("gl").style.pointerEvents = "auto";
+}
+resize(); load(); requestAnimationFrame(frame);
+setTimeout(() => $("dip").classList.add("off"), 200);
+window.GrandDebug = () => ({T, snap, films, sel, playing, isPlaying});
+}
+})();
+</script>
+</body></html>

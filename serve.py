@@ -16,7 +16,8 @@
      會用內建示範數據, 畫面會寫明。但係要真數據就一定要行呢個 server。）
 
 用法:
-  python3 serve.py                 # 預設開影片大堂
+  python3 serve.py                 # 預設開一號影廳 (入場 → 揀位 → 開幕睇片)
+  python3 serve.py tube            # 開影片大堂
   python3 serve.py arena           # 開演唱會場館
   python3 serve.py wall            # 開直播主牆
   python3 serve.py --port 8000     # 指定 port
@@ -38,6 +39,7 @@ import webbrowser
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 PAGES = {
+    "theatre": ("theatre.html", "🎟️ 一號影廳 — 撕飛入場, 揀個位坐低, 開幕睇片"),
     "tube":  ("tube3d.html", "🎬 影片大堂 — 操控角色行入去揀片"),
     "arena": ("arena.html", "🎤 演唱會場館 — 全球直播人潮"),
     "wall":  ("arena.html?mode=wall", "🧱 直播主牆"),
@@ -98,8 +100,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="本機開嚟睇")
-    ap.add_argument("page", nargs="?", default="tube", choices=list(PAGES),
-                    help="開邊版 (預設 tube)")
+    ap.add_argument("page", nargs="?", default="theatre", choices=list(PAGES),
+                    help="開邊版 (預設 theatre)")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true", help="唔好自動開瀏覽器")
     ap.add_argument("--live", action="store_true", help="逼佢出街攞真數據")
