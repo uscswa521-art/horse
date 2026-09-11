@@ -453,7 +453,7 @@ class Theatre {
   /** 觀眾人數 ↔ 觀看數: 18 + 2·log10(views), 保護中間推薦區。 */
   setAudience(count, seed){
     const rnd = mulberry(seed|0), n = clamp(count|0, 0, 40), pool = this.seats.filter(s => !s.reco && !(s.r >= 2 && s.r <= 3 && Math.abs(s.x) <= 1.4));
-    for (const s of this.seats) s.occupied = false;
+    for (const s of this.seats) { s.occupied = false; s.who = ""; }
     // 後排 B–E 同中間優先
     const weighted = pool.map(s => ({s, w: (s.r>=1&&s.r<=4 ? 1.0 : 0.6) * (Math.abs(s.x) <= 3.15 ? 1.0 : 0.7) * (0.5+rnd())}))
       .sort((a,b) => b.w - a.w).slice(0, n);
@@ -463,6 +463,16 @@ class Theatre {
     for (const s of this.seats) if (s.occupied) sd.push(s.x, s.y + 0.56, s.z + 0.05, rnd());
     this._upload(this.silInst, new Float32Array(sd));
   }
+  /** 真人在場: [{code, name}] — 指定座位有人 (剪影 + 名), 其餘空。 */
+  setOccupied(list){
+    const map = new Map(); for (const o of list || []) if (o && o.code) map.set(String(o.code).toUpperCase(), o);
+    for (const s of this.seats) { const o = map.get(s.code); s.occupied = !!o && s.i !== this.seat; s.who = o ? String(o.name || "") : ""; }
+    const sd = []; let k = 0;
+    for (const s of this.seats) if (s.occupied) sd.push(s.x, s.y + 0.56, s.z + 0.05, (k++ * 0.37) % 1);
+    this._upload(this.silInst, new Float32Array(sd));
+  }
+  /** 銅牌閃一下 (拍手 / 有人坐低)。 */
+  pulse(code){ const s = this.seats.find(x => x.code === code); if (s) { if (!this.pulses) this.pulses = new Map(); this.pulses.set(s.i, performance.now()); } }
   setTextures(TT){
     if (!TT) return; this.TT = TT;
     const t = this.tex;
@@ -733,6 +743,7 @@ class Theatre {
         if (this.phase === "choose" && s.reco) g = 0.45;
         if (k === this.reservedSeat && this.phase === "choose") g = 0.55 + 0.25*Math.sin(t*0.8*2*Math.PI);
         if (k === this.seat) g = 0.6; if (k === this.hover) g = 0.9;
+        if (this.pulses && this.pulses.has(k)) { const a = (performance.now() - this.pulses.get(k)) / 900; if (a < 1) g = Math.max(g, 1.0 - a*a); else this.pulses.delete(k); }
         if (this.phase === "seated" || this.phase === "glide") g *= 0.5 + 0.5*this.houseV;
         if (Math.abs(p[k*9+8] - g) > 0.01) { p[k*9+8] = g; changed = true; } });
       if (changed) this._upload(this.plateInst, p); }

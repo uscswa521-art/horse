@@ -17,6 +17,7 @@
 
 用法:
   python3 serve.py                 # 預設開一號影廳 (入場 → 揀位 → 開幕睇片)
+  python3 serve.py live            # 開直播主場 (主辦設定 Twitch / YouTube / Kick, 分享 link)
   python3 serve.py tube            # 開影片大堂
   python3 serve.py arena           # 開演唱會場館
   python3 serve.py wall            # 開直播主牆
@@ -40,6 +41,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 
 PAGES = {
     "theatre": ("theatre.html", "🎟️ 一號影廳 — 撕飛入場, 揀個位坐低, 開幕睇片"),
+    "live": ("live.html", "🎙️ 直播主場 — 主辦設定自己個台, 觀眾用 link 入場坐低一齊睇"),
     "tube":  ("tube3d.html", "🎬 影片大堂 — 操控角色行入去揀片"),
     "arena": ("arena.html", "🎤 演唱會場館 — 全球直播人潮"),
     "wall":  ("arena.html?mode=wall", "🧱 直播主牆"),
