@@ -1,0 +1,10 @@
+# Unreal build output (generated on your PC)
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+*.sln
+*.VC.db
+*.opensdf
+*.sdf

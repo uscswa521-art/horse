@@ -1,0 +1,826 @@
+<!DOCTYPE html><html lang="zh-HK"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🎤 Streamer Arena · 全球直播人潮巨像化</title>
+<meta name="description" content="將全世界直播主嘅即時觀看人數，變成一個你行得入去嘅演唱會場館：一粒光點 = 一個人。">
+<style>
+/* ══ Streamer Arena — 可嵌入 widget / OBS overlay ══════════════════════════
+   一個檔搞掂, 零外部依賴, 可以 <iframe> 或者直接做 OBS Browser Source。
+   ────────────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{
+  background:#05060b;color:#e6edf3;
+  font-family:-apple-system,"Segoe UI","PingFang HK","Microsoft JhengHei",sans-serif;
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
+}
+body.bg-transparent{background:transparent}
+body.mode-wall{overflow:auto}
+
+/* 場館 canvas */
+#stageWrap{position:fixed;inset:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* ── HUD: 主控卡 ─────────────────────────────────────────────────────── */
+.hud{position:fixed;pointer-events:none;z-index:5}
+.hud.tl{top:0;left:0;padding:18px 20px}
+.card{
+  pointer-events:auto;
+  background:rgba(9,11,20,.72);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.09);border-left:3px solid var(--pc,#9146ff);
+  border-radius:14px;padding:14px 16px;max-width:min(92vw,430px);
+  box-shadow:0 18px 48px -18px #000;
+}
+.who{display:flex;gap:11px;align-items:center}
+.shot{
+  width:64px;height:36px;border-radius:6px;object-fit:cover;flex:none;
+  background:linear-gradient(135deg,var(--pc,#9146ff),#0000);
+  border:1px solid rgba(255,255,255,.12);
+}
+.shot.none{display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:800;color:#fff;letter-spacing:.5px}
+.nm{font-size:17px;font-weight:800;letter-spacing:.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.sub{font-size:11.5px;color:#8b949e;margin-top:1px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.6px;
+  padding:1px 7px;border-radius:20px;background:var(--pc,#9146ff);color:#fff;
+  vertical-align:2px;margin-right:6px;text-transform:uppercase}
+
+.count{display:flex;align-items:baseline;gap:8px;margin-top:11px}
+.count .n{font-size:clamp(34px,6.4vw,54px);font-weight:900;line-height:.98;
+  letter-spacing:-1.5px;font-variant-numeric:tabular-nums;
+  text-shadow:0 0 34px var(--pcg,rgba(145,70,255,.55))}
+.count .u{font-size:13px;color:#8b949e;font-weight:700}
+.delta{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums}
+.delta.up{color:#3fb950}.delta.dn{color:#f85149}.delta.flat{color:#6e7681}
+
+.venue{margin-top:10px;font-size:13px;color:#c9d1d9;line-height:1.65;
+  border-top:1px solid rgba(255,255,255,.07);padding-top:9px}
+.venue b{color:#ffd479;font-size:16px;font-variant-numeric:tabular-nums}
+.venue .vsub{color:#7d8590;font-size:11.5px;display:block;margin-top:2px}
+.scale{margin-top:7px;font-size:11px;color:#7d8590}
+.scale i{display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--pc,#9146ff);margin-right:5px;vertical-align:1px;font-style:normal}
+
+/* ── 右上: 全球總數 + 平台分佈 ────────────────────────────────────────── */
+.hud.tr{top:0;right:0;padding:18px 20px;text-align:right}
+.glob{pointer-events:auto;background:rgba(9,11,20,.72);backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:12px 15px;min-width:210px}
+.glob .lab{font-size:10.5px;color:#7d8590;letter-spacing:1.2px;font-weight:700}
+.glob .big{font-size:26px;font-weight:900;letter-spacing:-.8px;
+  font-variant-numeric:tabular-nums;margin-top:1px}
+.pbars{margin-top:9px;display:grid;gap:5px}
+.pb{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;
+  font-size:11px;cursor:pointer;text-align:left}
+.pb .track{height:6px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+.pb .fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.2,.7,.3,1)}
+.pb .v{font-variant-numeric:tabular-nums;color:#8b949e;min-width:52px;text-align:right}
+.pb.off{opacity:.38}
+.pb.dead .v{color:#f85149}
+
+/* ── 底部: 直播主排行 (橫向) ──────────────────────────────────────────── */
+.rail{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:0 14px 12px;
+  display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  -webkit-mask-image:linear-gradient(90deg,#0000,#000 22px,#000 calc(100% - 22px),#0000)}
+.rail::-webkit-scrollbar{display:none}
+.chip{flex:none;pointer-events:auto;cursor:pointer;
+  background:rgba(9,11,20,.74);backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.08);border-bottom:2px solid var(--c,#555);
+  border-radius:10px;padding:7px 11px;min-width:132px;transition:.15s}
+.chip:hover{border-color:rgba(255,255,255,.3);transform:translateY(-2px)}
+.chip.on{background:rgba(255,255,255,.13);border-color:#fff6}
+.chip .r{font-size:10px;color:#7d8590;font-weight:800}
+.chip .n{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;max-width:150px}
+.chip .v{font-size:13px;font-weight:800;color:var(--c,#fff);
+  font-variant-numeric:tabular-nums;margin-top:1px}
+
+/* ── 狀態列 / 誠實聲明 ───────────────────────────────────────────────── */
+.foot{position:fixed;left:50%;top:0;transform:translateX(-50%);z-index:4;
+  padding:9px 14px;text-align:center;max-width:46vw;
+  font-size:10.5px;color:#6b7482;pointer-events:none;line-height:1.7}
+.warn{display:inline-block;background:#3a2a08;border:1px solid #7a5a12;color:#ffd479;
+  border-radius:6px;padding:1px 8px;font-weight:700;margin-right:8px}
+.err{color:#d17c74}
+
+/* ── OBS overlay 模式: 一條窄橫幅, 透明底 ─────────────────────────────── */
+body.mode-overlay .hud.tr,body.mode-overlay .rail,body.mode-overlay .foot{display:none}
+body.mode-overlay .hud.tl{padding:10px;top:50%;transform:translateY(-50%)}
+body.mode-overlay .card{background:rgba(6,8,14,.82);max-width:64vw;padding:12px 15px;
+  display:grid;grid-template-columns:auto auto;gap:15px;align-items:center}
+body.mode-overlay .venue{border-top:none;border-left:1px solid rgba(255,255,255,.14);
+  padding:0 0 0 14px;margin:0;white-space:nowrap}
+body.mode-overlay .venue .vsub,body.mode-overlay .scale,body.mode-overlay .sub{color:#adbac7}
+body.mode-overlay .count{margin-top:8px}
+body.mode-overlay .count .n{font-size:clamp(28px,4.4vw,44px)}
+body.mode-overlay .scale{margin-top:5px}
+
+/* ── Wall 模式: 全球直播主牆 ─────────────────────────────────────────── */
+.wall{display:none}
+body.mode-wall #stageWrap,body.mode-wall .hud.tl,body.mode-wall .hud.tr,
+body.mode-wall .rail{display:none}
+.whdr{grid-column:1/-1;background:rgba(255,212,121,.06)}
+body.mode-wall .wall{display:grid;position:relative;z-index:2;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;
+  padding:96px 18px 60px;max-width:1500px;margin:0 auto}
+.wcard{background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.08);
+  border-top:3px solid var(--c,#555);border-radius:12px;padding:11px 12px;overflow:hidden}
+.wcard .wtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.wcard .wn{font-size:13.5px;font-weight:800;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.wcard .wr{font-size:10.5px;color:#7d8590;font-weight:800;flex:none}
+.wcard .wv{font-size:21px;font-weight:900;color:var(--c,#fff);letter-spacing:-.5px;
+  font-variant-numeric:tabular-nums;margin-top:2px}
+.wcard .we{font-size:11px;color:#8b949e;margin-top:1px}
+.wcard canvas{position:relative;width:100%;height:74px;margin-top:7px;display:block}
+
+/* 提示 */
+.hint{position:fixed;left:50%;bottom:78px;transform:translateX(-50%);z-index:7;
+  font-size:11.5px;color:#7d8590;background:rgba(9,11,20,.7);padding:5px 12px;
+  border-radius:20px;border:1px solid rgba(255,255,255,.07);pointer-events:none;
+  transition:opacity .5s}
+body.mode-overlay .hint,body.mode-wall .hint{display:none}
+@media(max-width:720px){
+  .hud.tr{display:none}
+  .card{max-width:calc(100vw - 28px)}
+  .foot{top:auto;bottom:72px;max-width:94vw;padding:5px 10px;
+        background:rgba(5,6,11,.78);border-radius:8px}
+  .foot .err,.foot .meta{display:none}
+  .foot:empty{display:none}
+  .hint{display:none}
+}
+</style></head>
+<body>
+
+<div id="stageWrap">
+  <canvas id="gl"></canvas><!-- 3D 場館 (WebGL2, 觀眾同直播主識郁) -->
+  <canvas id="crowd"></canvas><!-- 2D fallback: 靜態人海 -->
+  <canvas id="fx"></canvas><!-- 2D fallback: 動畫層 -->
+</div>
+
+<div class="wall" id="wall"></div>
+
+<div class="hud tl"><div class="card" id="card">
+  <div>
+    <div class="who">
+      <div class="shot none" id="shot">?</div>
+      <div style="min-width:0">
+        <div class="nm" id="nm">載入緊…</div>
+        <div class="sub" id="sub"><span class="badge" id="bdg">—</span><span id="subt"></span></div>
+      </div>
+    </div>
+    <div class="count">
+      <span class="n" id="n">0</span><span class="u">人 正在睇</span>
+      <span class="delta flat" id="delta"></span>
+    </div>
+    <div class="scale" id="scale"><i></i>1 粒光點 = 1 個人</div>
+  </div>
+  <div class="venue" id="venue"></div>
+</div></div>
+
+<div class="hud tr"><div class="glob">
+  <div class="lab">此刻全球直播人潮（頭部榜）</div>
+  <div class="big" id="gtotal">—</div>
+  <div class="pbars" id="pbars"></div>
+</div></div>
+
+<div class="rail" id="rail"></div>
+<div class="foot" id="foot"></div>
+<div class="hint" id="hint">← → 換直播主　·　空白鍵 自動巡場　·　按底下卡片跳台</div>
+
+<script src="arena3d.js"></script>
+<script>
+(() => {
+"use strict";
+// ══ 設定 (全部可以用 URL 參數改) ═════════════════════════════════════════
+//  arena.html?mode=overlay&me=twitch:xqc&bg=transparent
+const P = new URLSearchParams(location.search);
+const MODE = P.get("mode") || "arena";
+const CFG = {
+  mode:     MODE,                                 // arena | overlay | wall
+  bg:       P.get("bg")     || (P.get("mode")==="overlay" ? "transparent" : "dark"),
+  data:     P.get("data")   || "data/streamers.json",
+  me:       (P.get("me")    || "").toLowerCase(), // 例: twitch:xqc / xqc
+  only:     (P.get("platform")||"").toLowerCase().split(",").filter(Boolean),
+  top:      +(P.get("top")  || 40),
+  refresh:  Math.max(15, +(P.get("refresh") || 60)) * 1000,
+  // 3D 場館可以企多啲人 (GPU instancing, 一個 draw call 搞掂)
+  maxDots:  Math.min(150000, +(P.get("dots") ||
+            ((P.get("view") || (MODE === "overlay" ? "2d" : "3d")) === "3d" &&
+             window.Arena3D && Arena3D.supported() ? 45000 : 26000))),
+  cycle:    P.get("cycle") !== "0",               // 自動巡場
+  cycleSec: Math.max(4, +(P.get("cycleSec") || 9)),
+  unit:     P.get("unit") || "紅館",              // 用邊個場館做換算單位
+  // 3D 場館預設開; OBS overlay 嗰條窄橫幅預設用 2D —
+  //   一嚟細細條睇唔到立體, 二嚟唔想食直播主部機嘅 GPU。想要就 ?view=3d
+  view:     P.get("view") || (MODE === "overlay" ? "2d" : "3d"),
+  cam:      P.get("cam") || "auto",               // auto = 冇人郁就自己遊場
+};
+document.body.classList.add("mode-" + CFG.mode, "bg-" + CFG.bg);
+
+// 平台色
+const PC = {
+  twitch:{c:"#9146ff",n:"Twitch"}, youtube:{c:"#ff2d55",n:"YouTube"},
+  kick:  {c:"#53fc18",n:"Kick"},   tiktok :{c:"#25f4ee",n:"TikTok"},
+  all:   {c:"#ffd479",n:"全球"},
+};
+const pc = p => (PC[p] || {c:"#8b949e",n:p}).c;
+
+// 真實場館容量 — 令個數字有得比較, 唔再係一舊抽象嘅數
+const VENUES = [
+  {n:"伊利沙伯體育館", s:"伊館",   cap:3500},
+  {n:"紅磡體育館",     s:"紅館",   cap:12500},
+  {n:"亞洲國際博覽館", s:"亞博",   cap:14000},
+  {n:"香港大球場",     s:"大球場", cap:40000},
+  {n:"東京巨蛋",       s:"東京巨蛋",cap:55000},
+  {n:"溫布萊球場",     s:"溫布萊", cap:90000},
+  {n:"北京鳥巢",       s:"鳥巢",   cap:91000},
+];
+const UNIT = VENUES.find(v => v.s === CFG.unit || v.n === CFG.unit) || VENUES[1];
+
+// ══ 小工具 ══════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const cm  = n => (n|0).toLocaleString("en-US");
+const zh  = n => n >= 1e8 ? (n/1e8).toFixed(2)+"億"
+              : n >= 1e4 ? (n/1e4).toFixed(n>=1e6?0:1)+"萬" : cm(n);
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const hash = s => { let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);} return (h>>>0)/4294967295; };
+
+// ══ 狀態 ════════════════════════════════════════════════════════════════
+let snap = null;        // 最新 snapshot
+let list = [];          // 過濾/排序後嘅直播主 (index 0 = 「全球總和」虛擬項)
+let idx  = 0;           // 而家睇緊邊個
+let shown = 0;          // 畫面上跳緊嘅數字 (平滑過渡)
+let prevViewers = new Map();
+let cycleT = 0, cycling = CFG.cycle;
+
+// ══ 人海排位 (world 座標, 一粒 = 一個「座位」) ═══════════════════════════
+//   由舞台前面開始, 一排排扇形向後排。世界單位固定 = 1 個座位闊,
+//   所以人愈多, 個場就愈大, 鏡頭要拉得愈遠 — 舞台會細到得返一點,
+//   呢個「鏡頭拉遠」正正就係「巨像化」嘅感覺。
+const FAN = 2.35;       // 扇形角度 (rad) ≈ 135°
+const R0  = 9;          // 第一排離舞台幾遠
+let seats = null;       // Float32Array [x0,y0,x1,y1,...]
+let seatKey = "";       // cache key
+
+function layout(nDots){
+  const key = nDots + "";
+  if (key === seatKey) return seats;
+  const arr = new Float32Array(nDots * 2);
+  let i = 0, r = R0;
+  while (i < nDots) {
+    const per = Math.max(3, Math.floor(FAN * r));      // 呢一排坐得幾多人
+    const a0 = Math.PI/2 - FAN/2, step = FAN / per;
+    for (let k = 0; k < per && i < nDots; k++, i++) {
+      // 少少抖動, 唔好排到好似格仔咁死板
+      const j1 = hash("a"+i)-0.5, j2 = hash("b"+i)-0.5;
+      const a = a0 + step*(k+0.5) + j1*step*0.55;
+      const rr = r + j2*0.55;
+      arr[i*2]   = Math.cos(a)*rr;
+      arr[i*2+1] = Math.sin(a)*rr;
+    }
+    r += 1;
+  }
+  seats = arr; seatKey = key;
+  return arr;
+}
+// 半徑 R 以內坐得幾多人 (畫場館比較圈用)
+const capAt = R => Math.max(0, FAN*(R*R - R0*R0)/2);
+const radiusFor = c => Math.sqrt(2*c/FAN + R0*R0);
+
+// ══ Canvas ══════════════════════════════════════════════════════════════
+const cvC = $("crowd"), cvF = $("fx"), cvG = $("gl");
+const ctxC = cvC.getContext("2d"), ctxF = cvF.getContext("2d");
+let W=0, H=0, DPR=1, view = null, crowdKey = "";
+
+// 3D 場館: 有 WebGL2 就用, 冇就跌返落 2D 人海 (功能一樣, 只係唔立體)
+let R3D = null;
+if (CFG.view === "3d" && CFG.mode !== "wall" &&
+    window.Arena3D && Arena3D.supported()) {
+  try { R3D = Arena3D.create(cvG, {cam: CFG.cam, mode: CFG.mode,
+                                   onQuality: () => updateScale()}); }
+  catch (e) { console.warn("3D 開唔到, 用返 2D:", e); R3D = null; }
+}
+// arena3d.js 載唔到 (例如喺 ZIP 入面直接開, 個 js 冇一齊解壓出嚟) 就會靜靜雞
+// 跌返落 2D —— 用得着但少咗嘢, 所以要講聲。
+const missing3d = CFG.view === "3d" && CFG.mode !== "wall" && !window.Arena3D;
+if (R3D) { cvC.style.display = cvF.style.display = "none"; }
+else { cvG.style.display = "none"; }
+document.body.classList.add(R3D ? "is-3d" : "is-2d");
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  for (const c of [cvC, cvF]) { c.width = W*DPR; c.height = H*DPR; }
+  ctxC.setTransform(DPR,0,0,DPR,0,0); ctxF.setTransform(DPR,0,0,DPR,0,0);
+  if (R3D) R3D.resize(W, H, DPR);
+  crowdKey = "";          // 尺寸變咗要重畫人海
+}
+addEventListener("resize", resize);
+
+/** 畫靜態人海 — 只喺人數 / 尺寸 / 平台變咗先做。 */
+function drawCrowd(n, color){
+  const dots = Math.min(n, CFG.maxDots);
+  const perDot = Math.max(1, Math.ceil(n / CFG.maxDots));
+  const key = dots+"|"+color+"|"+W+"x"+H+"|"+CFG.mode;
+  if (key === crowdKey) return view;
+  crowdKey = key;
+
+  const pts = layout(dots);
+  const R = radiusFor(dots) + 2;
+  // 鏡頭: 將成個扇形塞入畫面 (overlay 模式得一條窄橫幅)
+  //   overlay 模式: 人海推去右邊, 唔好俾左邊塊資料卡遮住
+  const isOv = CFG.mode === "overlay";
+  const halfW = R * Math.sin(FAN/2);
+  const cx = isOv ? W*0.74 : W/2;
+  const availHalf = isOv ? Math.min(W - cx, W*0.25) : W*0.47;
+  // 窄畫面 (手機): 情願俾人海兩邊爆出畫面外, 都好過中間吊住一舊細細嘅 —
+  //   爆出去反而似真係企咗喺人堆入面。
+  const over = (!isOv && W < 720) ? 1.9 : 1;
+  const z = Math.min(availHalf*over/halfW, (H*(isOv?0.96:0.84))/(R + R0*1.6));
+  const cy = isOv ? H*0.99 : H*0.88;
+  const a0 = Math.PI + (Math.PI-FAN)/2, a1 = 2*Math.PI - (Math.PI-FAN)/2;
+  view = {z, cx, cy, R, perDot, dots, color};
+
+  ctxC.clearRect(0,0,W,H);
+  // 場館地台 (人海後面嘅暗底, 令人海浮出嚟)
+  const g = ctxC.createRadialGradient(cx, cy, 0, cx, cy, R*z);
+  g.addColorStop(0, "rgba(255,255,255,.10)");
+  g.addColorStop(.35,"rgba(140,150,200,.05)");
+  g.addColorStop(1,  "rgba(0,0,0,0)");
+  ctxC.fillStyle = g; ctxC.beginPath();
+  ctxC.moveTo(cx, cy);
+  ctxC.arc(cx, cy, R*z, a0, a1);
+  ctxC.closePath(); ctxC.fill();
+
+  // 人海本體
+  const rad = clamp(z*0.44, 0.5, 3.0);
+  const size = Math.max(1, rad*2);
+  for (let i = 0; i < dots; i++) {
+    const x = cx + pts[i*2]*z, y = cy - pts[i*2+1]*z;
+    if (x < -4 || x > W+4 || y < -4 || y > H+4) continue;
+    // 前排光啲 (近舞台), 後排暗啲 — 造出深度
+    const d = i / dots;
+    const a = 0.92 - d*0.5 + (hash("l"+i)-0.5)*0.3;
+    ctxC.fillStyle = shade(color, clamp(a,.16,1), i);
+    ctxC.fillRect(x-rad, y-rad, size, size);
+  }
+
+  // ── 場館容量圈 (畫喺人海之上先睇得清) ───────────────────────────────
+  //    呢個係「巨像化」嘅比例尺: 你即刻見到成個紅館喺呢片人海入面有幾細。
+  drawVenueRings(n, perDot, z, cx, cy, a0, a1, dots);
+
+  // 舞台 (愈多人, 舞台喺畫面上就愈細 — 就係嗰種「望落去好細粒」嘅震撼)
+  const sw = Math.max(3, R0*1.7*z), sh = Math.max(2, R0*0.5*z);
+  ctxC.fillStyle = "rgba(255,255,255,.95)";
+  ctxC.shadowColor = color; ctxC.shadowBlur = Math.max(8, sw*0.7);
+  ctxC.fillRect(cx - sw/2, cy - sh*0.2, sw, sh);
+  ctxC.shadowBlur = 0;
+  return view;
+}
+
+/** 畫場館容量圈 + 標籤 (太逼就唔標, 免得疊字)。 */
+function drawVenueRings(n, perDot, z, cx, cy, a0, a1, dots){
+  ctxC.lineWidth = 1.2;
+  ctxC.font = "700 11px -apple-system,'PingFang HK','Microsoft JhengHei',sans-serif";
+  ctxC.textBaseline = "middle";
+  const diag = Math.hypot(W, H);
+  let lastY = 1e9;
+  const rings = [];
+  for (const v of VENUES) {
+    const rr = radiusFor(v.cap / perDot) * z;
+    if (rr < 22 || rr > diag) continue;
+    if (v.cap > n * 2.2) continue;                 // 遠遠未夠嘅場館唔使畫
+    rings.push({v, rr, filled: v.cap <= n, isUnit: v === UNIT});
+  }
+  // 主單位 (預設紅館) 嗰個圈填色 — 一眼睇到「一個紅館咁大」
+  const u = rings.find(r => r.isUnit);
+  if (u) {
+    ctxC.beginPath(); ctxC.moveTo(cx, cy);
+    ctxC.arc(cx, cy, u.rr, a0, a1); ctxC.closePath();
+    ctxC.fillStyle = "rgba(255,212,121,.13)"; ctxC.fill();
+  }
+  for (const {v, rr, filled, isUnit} of rings) {
+    ctxC.strokeStyle = isUnit ? "rgba(255,212,121,.85)"
+                     : filled ? "rgba(255,255,255,.34)" : "rgba(255,255,255,.16)";
+    ctxC.setLineDash(filled ? [] : [4,5]);
+    ctxC.beginPath(); ctxC.arc(cx, cy, rr, a0, a1); ctxC.stroke();
+    ctxC.setLineDash([]);
+    // 標籤放喺圈頂, 太逼 / 未坐滿 / overlay 太細就唔標, 免得亂
+    const ty = cy - rr;
+    if (!filled && !isUnit) continue;
+    if (CFG.mode === "overlay" && !isUnit) continue;
+    if (ty < 14 || ty > H-10 || Math.abs(ty - lastY) < 19) continue;
+    lastY = ty;
+    const label = (isUnit ? "▮ " : "") + v.s + " " + zh(v.cap) + "人";
+    const tw = ctxC.measureText(label).width;
+    ctxC.fillStyle = "rgba(5,6,11,.72)";
+    ctxC.fillRect(cx - tw/2 - 6, ty - 9, tw + 12, 18);
+    ctxC.fillStyle = isUnit ? "#ffd479" : filled ? "rgba(255,255,255,.8)" : "rgba(255,255,255,.5)";
+    ctxC.textAlign = "center";
+    ctxC.fillText(label, cx, ty);
+  }
+  ctxC.textAlign = "start"; ctxC.textBaseline = "alphabetic";
+}
+
+// 由平台色整出一粒燈嘅顏色 (少少色溫變化, 似真人手機燈海)
+const RGB = {};
+/** #rrggbb → [r,g,b]，即用即解 (3D 模式唔行 shade(), 唔可以靠佢填 cache)。 */
+function rgbOf(hex){
+  let c = RGB[hex];
+  if (!c) c = RGB[hex] = [parseInt(hex.slice(1,3),16),
+                          parseInt(hex.slice(3,5),16),
+                          parseInt(hex.slice(5,7),16)];
+  return c;
+}
+function shade(hex, a, i){
+  const c = rgbOf(hex);
+  const w = hash("w"+i) * 0.5;               // 撈少少白, 似人群反光
+  const r = c[0]+(255-c[0])*w, g = c[1]+(255-c[1])*w, b = c[2]+(255-c[2])*w;
+  return `rgba(${r|0},${g|0},${b|0},${a.toFixed(2)})`;
+}
+
+// ── 動畫層: 燈海閃爍 + 人浪 + 射燈 ──────────────────────────────────────
+let t0 = performance.now();
+function fx(now){
+  requestAnimationFrame(fx);
+  if (CFG.mode === "wall") return;
+  const t = (now - t0)/1000;
+  if (R3D) { R3D.render(t); tick(now); return; }
+  if (!view) return;
+  ctxF.clearRect(0,0,W,H);
+  const {z, cx, cy, R, color, dots} = view;
+
+  // 人浪: 一條光帶由舞台向後掃出去 (Mexican wave)
+  const wr = ((t*0.42) % 1.45) * R * z;
+  if (wr > 4) {
+    const g = ctxF.createRadialGradient(cx, cy, Math.max(0,wr-26*z*0.9), cx, cy, wr+18);
+    g.addColorStop(0,"rgba(255,255,255,0)");
+    g.addColorStop(.55, hexA(color,.16));
+    g.addColorStop(1,"rgba(255,255,255,0)");
+    ctxF.fillStyle = g;
+    ctxF.beginPath();
+    ctxF.arc(cx, cy, wr+18, Math.PI + (Math.PI-FAN)/2, 2*Math.PI - (Math.PI-FAN)/2);
+    ctxF.closePath(); ctxF.fill();
+  }
+
+  // 燈海: 隨機幾百粒閃, 唔使掃成 30,000 粒都有成個場喺度郁嘅感覺
+  const pts = seats;
+  const N = Math.min(520, dots);
+  ctxF.fillStyle = "#fff";
+  for (let k = 0; k < N; k++) {
+    const i = ((Math.sin(k*12.9898 + Math.floor(t*2.1)*78.233)*43758.5453) % 1 + 1) % 1 * dots | 0;
+    const ph = hash("p"+i)*6.283;
+    const a = Math.max(0, Math.sin(t*3.1 + ph));
+    if (a < 0.55) continue;
+    const x = cx + pts[i*2]*z, y = cy - pts[i*2+1]*z;
+    ctxF.globalAlpha = (a-0.55)*1.6;
+    const s = clamp(z*0.9, 1, 3.4);
+    ctxF.fillRect(x-s/2, y-s/2, s, s);
+  }
+  ctxF.globalAlpha = 1;
+
+  // 舞台射燈: 兩束掃緊嘅光柱
+  const beamH = R*z;
+  for (const dir of [-1, 1]) {
+    const a = Math.PI/2 + dir*(0.42 + Math.sin(t*0.5 + dir)*0.34);
+    const g = ctxF.createLinearGradient(cx, cy, cx+Math.cos(a)*beamH, cy-Math.sin(a)*beamH);
+    g.addColorStop(0, hexA(color,.24)); g.addColorStop(1,"rgba(255,255,255,0)");
+    ctxF.fillStyle = g;
+    ctxF.beginPath(); ctxF.moveTo(cx, cy);
+    ctxF.lineTo(cx+Math.cos(a-0.055)*beamH, cy-Math.sin(a-0.055)*beamH);
+    ctxF.lineTo(cx+Math.cos(a+0.055)*beamH, cy-Math.sin(a+0.055)*beamH);
+    ctxF.closePath(); ctxF.fill();
+  }
+
+  tick(now);
+}
+
+/** 數字平滑跳動 + 自動巡場 (2D / 3D 都要行)。 */
+function tick(now){
+  const target = list[idx] ? list[idx].viewers : 0;
+  if (Math.abs(shown - target) > 0.6) {
+    shown += (target - shown) * 0.12;
+    $("n").textContent = cm(Math.round(shown));
+  }
+  if (cycling && list.length > 1 && now - cycleT > CFG.cycleSec*1000) {
+    cycleT = now; focus((idx+1) % list.length);
+  }
+}
+function hexA(hex,a){ const c = rgbOf(hex); return `rgba(${c[0]},${c[1]},${c[2]},${a})`; }
+requestAnimationFrame(fx);
+
+/** 誠實講返: 畫面上一個公仔 / 一粒光點, 到底代表幾多個真人。
+    (3D 模式如果電腦跑唔郁, 會自動少畫幾成人, 呢個數就會跟住變) */
+function updateScale(){
+  const s = list[idx]; if (!s) return;
+  const drawn = R3D ? (R3D.renderN || R3D.instN)
+                    : Math.min(s.viewers, CFG.maxDots);
+  const who = R3D ? "個公仔" : "粒光點";
+  const per = Math.max(1, Math.round(s.viewers / Math.max(1, drawn)));
+  $("scale").innerHTML = per > 1
+    ? `<i></i>1 ${who} = ${cm(per)} 人（人太多，場入面企緊 ${cm(drawn)} ${who.slice(0,1)}）`
+    : `<i></i>1 ${who} = 1 個人（場入面企緊 ${cm(drawn)} ${who.slice(0,1)}）`;
+}
+
+/** 砌 3D 場館: 同 2D 用返同一套座位排位, 加埋碗形高度就係個場。 */
+function build3d(s, color){
+  const dots = Math.min(s.viewers, CFG.maxDots);
+  const perDot = Math.max(1, Math.ceil(s.viewers / CFG.maxDots));
+  const pts = layout(dots);
+  const R = radiusFor(dots) + 2;
+  R3D.setScene({
+    pts, dots, R, R0, FAN, color,
+    viewers: s.viewers, perDot,
+    name: s.name, platform: s.platform,
+    // 場館容量圈 (地台上面嗰幾個圈): 一眼睇到個紅館喺呢片人海入面有幾細
+    venues: VENUES.filter(x => x.cap/perDot <= dots*1.7)
+                  .map(x => ({r: radiusFor(x.cap/perDot),
+                              filled: x.cap <= s.viewers, unit: x === UNIT})),
+  });
+  return {perDot, dots};
+}
+
+// ══ 揀邊個直播主 ════════════════════════════════════════════════════════
+function focus(i){
+  if (!list.length) return;
+  idx = clamp(i, 0, list.length-1);
+  const s = list[idx];
+  const col = pc(s.platform);
+  document.documentElement.style.setProperty("--pc", col);
+  $("card").style.setProperty("--pc", col);
+  $("card").style.setProperty("--pcg", hexA(col,.5));
+
+  $("nm").textContent = s.name;
+  $("bdg").textContent = (PC[s.platform]||{n:s.platform}).n;
+  $("bdg").style.background = col;
+  $("subt").textContent = s.category || s.title || "";
+  // ⚠️ 全部用 DOM API 砌, 唔好用 innerHTML —— ?data= 可以指去任何 JSON,
+  //    入面嘅 avatar / name 當係唔可信嘅外部字串。
+  const sh = $("shot");
+  const initial = (s.name || "?").slice(0, 1);
+  const mkFallback = () => {
+    const d = document.createElement("div");
+    d.className = "shot none"; d.id = "shot"; d.textContent = initial;
+    d.style.background = `linear-gradient(135deg,${col},#0006)`;
+    return d;
+  };
+  if (s.avatar && /^https?:\/\//i.test(s.avatar)) {
+    const img = document.createElement("img");
+    img.className = "shot"; img.id = "shot"; img.alt = ""; img.src = s.avatar;
+    img.onerror = () => img.replaceWith(mkFallback());
+    sh.replaceWith(img);
+  } else {
+    sh.replaceWith(mkFallback());
+  }
+
+  // 變化 (同上一個 snapshot 比)
+  const pv = prevViewers.get(s.id);
+  const d = $("delta");
+  if (pv == null || pv === s.viewers) { d.textContent = ""; d.className = "delta flat"; }
+  else { const diff = s.viewers - pv;
+         d.textContent = (diff>0?"▲ +":"▼ ") + cm(Math.abs(diff));
+         d.className = "delta " + (diff>0?"up":"dn"); }
+
+  // 場館換算 — 呢句先係「巨像化」嘅核心: 幾多個紅館
+  const halls = s.viewers / UNIT.cap;
+  const big = [...VENUES].reverse().find(v => s.viewers >= v.cap);
+  $("venue").innerHTML =
+    `坐滿 <b>${halls >= 10 ? Math.round(halls) : halls.toFixed(1)}</b> 個${UNIT.s}` +
+    `<span class="vsub">${UNIT.n} 可坐 ${cm(UNIT.cap)} 人` +
+    (big ? ` · 已經超越 ${big.n} (${zh(big.cap)})` : ` · 未夠坐滿一個 ${VENUES[0].s}`) +
+    `</span>`;
+
+  crowdKey = "";                                   // 換人 = 重畫人海
+  if (R3D) build3d(s, col); else drawCrowd(s.viewers, col);
+  updateScale();
+
+  for (const el of document.querySelectorAll(".chip"))
+    el.classList.toggle("on", +el.dataset.i === idx);
+  // 數字由上一個直播主嘅人數「碌」去新數字 (fx loop 會慢慢追)
+  $("n").textContent = cm(Math.round(shown));
+}
+
+// ══ 畫 UI ═══════════════════════════════════════════════════════════════
+function renderRail(){
+  $("rail").innerHTML = list.map((s,i) =>
+    `<div class="chip${i===idx?" on":""}" data-i="${i}" style="--c:${pc(s.platform)}">
+       <div class="r">${i===0?"榜上總和":"#"+i}</div>
+       <div class="n">${esc(s.name)}</div>
+       <div class="v">${zh(s.viewers)}</div>
+     </div>`).join("");
+  for (const el of document.querySelectorAll(".chip"))
+    el.onclick = () => { cycling = false; focus(+el.dataset.i); };
+}
+
+function renderGlobal(){
+  $("gtotal").textContent = cm(snap.total_viewers) + " 人";
+  $("pbars").innerHTML = platformBars();
+  for (const el of document.querySelectorAll(".pb"))
+    el.onclick = () => {
+      const p = el.dataset.p;
+      const j = list.findIndex(s => s.platform === p);
+      if (j >= 0) { cycling = false; focus(j); }
+    };
+}
+
+function platformBars(){
+  const tot = Math.max(1, snap.total_viewers);
+  return Object.entries(snap.platforms).map(([p,v]) => {
+    const dead = !v.ok;
+    return `<div class="pb${dead?" dead":""}" data-p="${p}" title="${esc(v.error||"")}">
+      <div><div style="display:flex;justify-content:space-between;margin-bottom:2px">
+        <span style="color:${pc(p)};font-weight:800">${(PC[p]||{n:p}).n}</span></div>
+        <div class="track"><div class="fill" style="width:${dead?0:(v.viewers/tot*100).toFixed(1)}%;background:${pc(p)}"></div></div>
+      </div>
+      <div class="v">${dead ? "攞唔到" : zh(v.viewers)}</div></div>`;
+  }).join("");
+}
+
+function renderFoot(){
+  const bad = Object.entries(snap.platforms).filter(([,v]) => !v.ok);
+  const ago = new Date(snap.generated_at);
+  const mins = Math.max(0, Math.round((Date.now() - ago.getTime())/60000));
+  const warn = snap.localDemo
+    ? "⚠️ 內建示範數據 · 讀唔到 " + esc(CFG.data) + "（file:// 開？行 python3 serve.py）"
+    : snap.source === "demo" ? "⚠️ 示範數據 · 未接 API key" : "⚠️ 部分平台攞唔到";
+  $("foot").innerHTML =
+    (missing3d ? `<span class="warn">⚠️ 載入唔到 arena3d.js（要解壓埋成個資料夾）· 而家用緊 2D</span> ` : "") +
+    (snap.source !== "live" ? `<span class="warn">${warn}</span>` : "") +
+    `<span class="meta">數據時間 ${snap.generated_at}（${mins} 分鐘前）· ` +
+    `${cm(snap.counted_streamers)} 個直播</span>` +
+    (bad.length ? `<br><span class="err">✕ ${bad.map(([p,v]) =>
+        `${p}: ${esc(String(v.error||"失敗").slice(0,64))}`).join("　")}</span>` : "");
+}
+
+function renderWall(){
+  const hdr =
+    `<div class="wcard whdr" style="--c:#ffd479">
+       <div class="wtop"><div class="wn">此刻全球直播人潮（頭部榜）</div>
+         <div class="wr">${(snap.platforms_ok||[]).length} 個平台</div></div>
+       <div class="wv" style="font-size:30px">${cm(snap.total_viewers)}</div>
+       <div class="we">= 坐滿 ${cm(Math.round(snap.total_viewers/UNIT.cap))} 個${UNIT.s}
+            · ${cm(snap.counted_streamers)} 個直播</div>
+       <div class="pbars" style="margin-top:9px">${platformBars()}</div>
+     </div>`;
+  $("wall").innerHTML = hdr + list.slice(1).map((s,i) =>
+    `<div class="wcard" style="--c:${pc(s.platform)}">
+       <div class="wtop"><div class="wn">${esc(s.name)}</div><div class="wr">#${i+1}</div></div>
+       <div class="wv">${cm(s.viewers)}</div>
+       <div class="we">${(PC[s.platform]||{n:s.platform}).n} · 坐滿 ${(s.viewers/UNIT.cap).toFixed(1)} 個${UNIT.s}</div>
+       <canvas data-v="${s.viewers}" data-c="${pc(s.platform)}"></canvas>
+     </div>`).join("");
+  const maxV = Math.max(1, ...list.slice(1).map(s => s.viewers));
+  for (const c of document.querySelectorAll(".wcard canvas")) drawMini(c, +c.dataset.v, c.dataset.c, maxV);
+}
+
+/** 牆入面每張卡嘅迷你人海 — 面積同人數成正比, 一眼睇到差幾遠。 */
+function drawMini(cv, n, color, maxV){
+  const dpr = Math.min(2, devicePixelRatio||1);
+  const w = cv.clientWidth || 200, h = 74;
+  cv.width = w*dpr; cv.height = h*dpr;
+  const x = cv.getContext("2d"); x.setTransform(dpr,0,0,dpr,0,0);
+  const dots = Math.max(6, Math.round(1800 * n / maxV));   // 相對規模
+  const pts = layout(Math.min(dots, 1800));
+  const R = radiusFor(Math.min(dots,1800));
+  const z = Math.min(w*0.94/(2*R*Math.sin(FAN/2)), h*0.92/R);
+  const cx = w/2, cy = h-2;
+  for (let i = 0; i < Math.min(dots,1800); i++) {
+    const px = cx + pts[i*2]*z, py = cy - pts[i*2+1]*z;
+    x.fillStyle = shade(color, 0.85 - i/Math.min(dots,1800)*0.5, i);
+    x.fillRect(px-0.8, py-0.8, 1.6, 1.6);
+  }
+}
+
+const esc = s => String(s??"").replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c]));
+
+/** file:// 直接 double-click 開嗰陣, 瀏覽器會擋 fetch(data/*.json)。
+    唔好淨係出個錯就算 —— 用內建示範數據頂住, 畫面照寫明係示範數據。
+    (要真數據就行 `python3 serve.py`) */
+function localDemo(err){
+  const R = {
+    twitch: [["NeonKettle","Just Chatting"],["PixelDim","League of Legends"],
+             ["SaltyRamen","VALORANT"],["VoidCastle","Grand Theft Auto V"],
+             ["MochiRaid","Just Chatting"],["BitLantern","Counter-Strike 2"]],
+    youtube:[["環球新聞直播台","News"],["Lo-Fi 深夜電台","Music"],
+             ["SpaceLaunch Live","Science & Tech"],["料理長 24H","Food"],
+             ["城市街頭 Cam","Travel"],["水族箱慢直播","Pets"]],
+    kick:   [["BoardroomBets","Slots"],["MidnightPoker","Poker"],
+             ["RallyStage","Racing"],["SunsetLounge","Just Chatting"]],
+    tiktok: [["@dancefloor.hk","Dance"],["@makeup.mika","Beauty"],
+             ["@streetfood.tw","Food"],["@puppy.cam","Pets"]],
+  };
+  const peak = {twitch:78000, youtube:145000, kick:26000, tiktok:41000};
+  const streamers = [], platforms = {};
+  for (const p of Object.keys(R)) {
+    let sum = 0;
+    R[p].forEach(([n, c], i) => {
+      const v = Math.max(120, Math.round(peak[p] / Math.pow(i+1, 0.85)
+                                         * (0.8 + 0.4*hash(p+n))));
+      sum += v;
+      streamers.push({id:`${p}:${n.toLowerCase()}`, platform:p, name:n, viewers:v,
+                      title:c+" · 示範數據", category:c, url:"", language:"",
+                      avatar:"", channel_id:n.toLowerCase()});
+    });
+    platforms[p] = {ok:false, streamers:R[p].length, viewers:sum, demo:true,
+                    error:"讀唔到 JSON: " + err};
+  }
+  streamers.sort((a,b) => b.viewers - a.viewers);
+  return {
+    generated_at: new Date().toISOString().slice(0,19) + "Z",
+    source: "demo", localDemo: true, fetchError: err,
+    total_viewers: streamers.reduce((a,s) => a+s.viewers, 0),
+    counted_streamers: streamers.length,
+    platforms_ok: [], platforms, streamers,
+  };
+}
+
+// ══ 攞數據 ══════════════════════════════════════════════════════════════
+async function load(){
+  let d;
+  try {
+    const r = await fetch(CFG.data + (CFG.data.includes("?")?"&":"?") + "t=" + Date.now(),
+                          {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    d = await r.json();
+  } catch (e) {
+    // 唔好死喺度: 用內建示範數據入場, 但係要講明。
+    d = localDemo(String(e.message || e));
+  }
+  // 記住上一次嘅數字, 用嚟顯示 ▲▼
+  if (snap) for (const s of snap.streamers) prevViewers.set(s.id, s.viewers);
+  snap = d;
+
+  let arr = (d.streamers||[]).slice();
+  if (CFG.only.length) arr = arr.filter(s => CFG.only.includes(s.platform));
+  arr.sort((a,b) => b.viewers - a.viewers);
+  arr = arr.slice(0, CFG.top);
+
+  // 第 0 項: 總和 — ⚠️ 要用「過濾之後」嗰批嚟加, 否則 ?platform=twitch
+  //   個總數仲係全部平台, 同下面條榜對唔上。
+  const pool = CFG.only.length
+    ? (d.streamers||[]).filter(s => CFG.only.includes(s.platform))
+    : (d.streamers||[]);
+  const total = pool.reduce((a,s) => a+s.viewers, 0);
+  const plats = CFG.only.length
+    ? CFG.only.filter(p => (d.platforms||{})[p] && d.platforms[p].ok)
+    : (d.platforms_ok||[]);
+  list = [{id:"all", platform:"all",
+           name: CFG.only.length ? `${CFG.only.join(" + ")} 加埋` : "榜上所有直播加埋",
+           viewers: total,
+           category:`${plats.length} 個平台 · ${cm(pool.length)} 個直播`,
+           title:"", avatar:""}, ...arr];
+
+  // me= 指定咗邊個, 就鎖定佢 (OBS overlay 主要用法)
+  if (CFG.me) {
+    const key = CFG.me;
+    const j = list.findIndex(s => s.id === key || s.channel_id === key ||
+                                  s.name.toLowerCase() === key ||
+                                  s.id.split(":")[1] === key);
+    if (j >= 0) { idx = j; cycling = false; }
+    else if (CFG.mode === "overlay") {
+      $("nm").textContent = CFG.me;
+      $("subt").textContent = "而家冇喺榜上（可能收咗檔，或者未入到頭 " + CFG.top + " 位）";
+    }
+  }
+
+  renderGlobal(); renderFoot();
+  if (CFG.mode === "wall") renderWall(); else { renderRail(); focus(idx); }
+}
+
+// 鍵盤
+addEventListener("keydown", e => {
+  // ⚠️ 3D 模式方向鍵係留返畀行路 (arena3d.js), 唔可以同時做換台,
+  //    否則㩒一下會又行又跳台。3D 用 [ ] 換台。
+  const prev = R3D ? "[" : "ArrowLeft", next = R3D ? "]" : "ArrowRight";
+  if (e.key === next) { cycling=false; focus(idx+1); }
+  else if (e.key === prev) { cycling=false; focus(idx-1); }
+  else if (e.key === " ") { e.preventDefault(); cycling = !cycling; cycleT = performance.now(); }
+});
+// resize: 3D 只需要換 viewport (resize() 已經做咗), 唔使成個場重砌 —
+//   setScene 要洗牌幾萬個 instance + 重建 mesh + 重整 texture, 拖到成個窗口卡死。
+let rzT = 0;
+addEventListener("resize", () => {
+  clearTimeout(rzT);
+  rzT = setTimeout(() => {
+    crowdKey = "";
+    if (CFG.mode === "wall") renderWall();
+    else if (!R3D) focus(idx);
+  }, 120);
+});
+if (R3D) $("hint").innerHTML =
+  "拖 = 轉視角　·　滾輪／兩指 = 行入人堆／退到高空　·　WASD／方向鍵 行路　·　" +
+  "[ ] 換直播主　·　空白鍵 自動巡場　·　R 返回入場位";
+setTimeout(() => { const h=$("hint"); if(h) h.style.opacity=0; }, 9000);
+// 3D 模式落手拖過就唔好再自動巡場, 唔會拖到一半俾佢跳咗台
+if (R3D) cvG.addEventListener("pointerdown", () => { cycling = false; });
+
+// 調試用 (喺 console 打 ArenaDebug() 就見到而家嘅狀態)
+window.ArenaDebug = () => ({R3D, list, idx, CFG, W, H});
+
+resize();
+load();
+setInterval(load, CFG.refresh);
+})();
+</script>
+</body></html>
