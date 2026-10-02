@@ -2,10 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "ArenaTypes.h"
 #include "ArenaPlayerController.generated.h"
 
 class UArenaHudWidget;
 class AArenaGameMode;
+class AArenaShowDirector;
 
 /**
  * Streamer controls (keys polled in PlayerTick, no input assets needed):
@@ -45,4 +47,19 @@ private:
 	bool bFreeFly = false;
 	bool bHudHidden = false;
 	float StatusTimer = 0.f;
+
+	// ---- private helpers (ArenaPlayerController.cpp) ----
+	/** WASD/QE + mouse move the director's camera actor while bFreeFly. */
+	void UpdateFreeFly(float DeltaTime);
+	/** Leaves free fly and switches the director to a preset camera. */
+	void SelectCamera(EArenaCamera Preset);
+	AArenaShowDirector* GetDirector() const;
+
+	/** Preset to return to when free fly is switched off with F. */
+	EArenaCamera FreeFlyReturnCamera = EArenaCamera::Broadcast;
+	float FreeFlyYaw = 0.f;
+	float FreeFlyPitch = 0.f;
+	/** Forces the next RefreshStatus to rebuild the text (after a key press). */
+	bool bStatusDirty = true;
+	bool bGreeted = false;
 };

@@ -33,7 +33,7 @@ public:
 	void Init(AArenaVenue* InVenue, int32 InMaxFigures);
 
 	void SetSnapshot(const TArray<FArenaViewer>& Viewers);
-	void AddViewer(const FArenaViewer& Viewer);   // label is recomputed from the venue if empty
+	void AddViewer(const FArenaViewer& Viewer);   // label is always recomputed from the venue once Init has run
 	void RemoveViewer(const FString& Id);
 	/** Total people watching on the platform (-1 = unknown -> crowd = named viewers only). */
 	void SetCrowdCount(int32 TotalWatching);
@@ -71,6 +71,8 @@ private:
 		float JumpT = -1.f;     // >= 0 while a clap jump plays (seconds since start)
 		float Phase = 0.f;      // random phase for bobbing
 		bool bNamed = false;
+		int32 Slot = INDEX_NONE; // venue slot; stable key across rebuilds
+		FString Id;              // named viewers only
 	};
 
 	void MarkDirty() { bDirty = true; }
@@ -78,6 +80,36 @@ private:
 	void UpdateLabels();
 	void Animate(float DeltaSeconds);
 	FTransform FigureTransform(const FFigure& F, float Time, float ExtraZ) const;
+
+	// ---- helpers (ArenaAudience.cpp) ----
+	FFigure MakeFigure(int32 Slot, bool bNamed) const;
+	void SetupVisuals();
+	void UpdateWalk(float DeltaSeconds);
+	void FinishWalk();
+	int32 WalkSegment(float Distance) const;
+	/** Standing root (ground point, facing the walk direction) of the walking guest. */
+	FTransform WalkRoot() const;
+	/** Root transform of a figure right now (seat + jump/bob, walk position, or guest chair). */
+	FTransform NamedRoot(int32 Index, bool& bOutStanding) const;
+	FTransform FigureRoot(bool bNamedGroup, int32 Index, bool& bOutStanding) const;
+	/** Writes the given figures' instances; returns true if anything was written. */
+	bool UpdateFigures(bool bNamedGroup, const TArray<int32>& Indices);
+	void PushFigures(bool bNamedGroup, int32 First, const TArray<FTransform>& Roots, const TArray<bool>& Standing);
+	void MarkFiguresRenderDirty(bool bNamedGroup);
+	void UpdateGlowSticks(bool bCrowdFrame);
+	UWidgetComponent* CreateLabel(const FVector& Location);
+	void RemoveLabel(const FString& Id);
+
+	TMap<int32, FString> SlotOwner;          // slot -> named viewer id
+	TMap<FString, FString> LabelSignature;   // id -> "name|seat|highlight" last pushed to the widget
+	TArray<float> WalkCumLength;             // cumulative length at each WalkPath point
+	float WalkLength = 0.f;
+	float WalkYaw = 0.f;
+	float LabelTimer = 0.f;
+	int32 AnimFrame = 0;
+	bool bWasBobbing = false;
+	bool bNamedPoseDirty = false;
+	bool bVisualsReady = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<AArenaVenue> Venue;

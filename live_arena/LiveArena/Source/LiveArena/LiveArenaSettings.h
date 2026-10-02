@@ -48,7 +48,11 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Stream")
 	FString CaptureDeviceName;
 
-	/** Web page shown on the LED screen when ScreenSource is Url (or Auto with no capture device). */
+	/**
+	 * The stream's public URL (YouTube / Twitch / Kick). Sent to the server so the audience page can play it.
+	 * Shown on the LED only when ScreenSource is Url: with Auto the LED never falls back to it, because the stream
+	 * is this arena itself and would appear 5-20 s late inside the LED.
+	 */
 	UPROPERTY(config, EditAnywhere, Category = "Stream")
 	FString StreamUrl;
 

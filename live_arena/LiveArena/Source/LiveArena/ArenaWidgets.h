@@ -10,6 +10,7 @@ class UWebBrowser;
 class UMediaTexture;
 class UBorder;
 class UWidgetSwitcher;
+class UOverlay;
 
 /**
  * All widgets are built in C++ (no .uasset): each class builds its tree in RebuildWidget() when
@@ -37,9 +38,13 @@ protected:
 
 private:
 	void Build();
+	/** Destroys the web browser (stops its audio and frees CEF) when the LED switches away from a web page. */
+	void ReleaseBrowser();
 
 	UPROPERTY(Transient) TObjectPtr<UWidgetSwitcher> Switcher;      // 0 = video, 1 = browser, 2 = placeholder
 	UPROPERTY(Transient) TObjectPtr<UImage> Video;
+	/** Page 1 of the switcher; the browser is created inside it on demand (so no CEF instance runs for capture/placeholder). */
+	UPROPERTY(Transient) TObjectPtr<UOverlay> BrowserHost;
 	UPROPERTY(Transient) TObjectPtr<UWebBrowser> Browser;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PlaceholderTitle;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> PlaceholderSub;
@@ -50,6 +55,8 @@ private:
 	FString PendingUrl;
 	int32 PendingUrlTicks = 0;
 	float ToastRemaining = 0.f;
+	/** Counts down to the next "mute every video / audio element" script while a web page is shown. */
+	float BrowserMuteTimer = 0.f;
 };
 
 /** Thin strip under the LED: "現場 1,234 人" | streamer name / mode | "入場 link". */

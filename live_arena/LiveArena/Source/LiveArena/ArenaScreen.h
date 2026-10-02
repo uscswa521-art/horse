@@ -47,6 +47,23 @@ private:
 	UArenaScreenWidget* GetScreenWidget() const;
 	UArenaBannerWidget* GetBannerWidget() const;
 
+	/** Creates MediaPlayer + MediaTexture, opens the device URL and puts the texture on the LED. False if the open was refused. */
+	bool OpenCaptureDevice(const FString& DeviceUrl);
+	/** Shows Url (YouTube watch links become embeds) on the LED. False if Url is empty. */
+	bool ShowWebSource(const FString& Url);
+	void ShowWaiting(const FString& Title, const FString& Subtitle);
+	void CloseMedia();
+
+	/** Media player reports the capture device could not be opened (asynchronous): fall back like Auto does. */
+	UFUNCTION()
+	void HandleMediaOpenFailed(FString FailedUrl);
+
+	// Remembered by SetSource for the asynchronous capture-device fallback.
+	EArenaScreenSource RequestedSource = EArenaScreenSource::Auto;
+	FString FallbackUrl;
+	FString FallbackTitle;
+	float GlowAmount = -1.f;
+
 	UPROPERTY(VisibleAnywhere, Category = "Arena")
 	TObjectPtr<USceneComponent> Root;
 

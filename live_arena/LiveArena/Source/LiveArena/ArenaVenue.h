@@ -116,6 +116,65 @@ private:
 	void AddBox(UInstancedStaticMeshComponent* Ism, const FVector& Centre, const FVector& SizeCm, float YawDeg = 0.f);
 	UInstancedStaticMeshComponent* MakeIsm(FName Name, UStaticMesh* Mesh, const FLinearColor& Color);
 
+	/**
+	 * A venue placed in a saved level is copied for PIE / loaded in a cooked game without re-running OnConstruction,
+	 * and everything Build() makes is transient, so it is rebuilt here when missing.
+	 */
+	virtual void PostInitializeComponents() override;
+
+	/** The instanced components one Build() fills (raw pointers, only alive during Build; Parts owns them). */
+	struct FBuildIsms
+	{
+		UInstancedStaticMeshComponent* Floor = nullptr;       // floor slab, tiers, concourse
+		UInstancedStaticMeshComponent* Walls = nullptr;       // stage body, stairs, outer / side / back walls
+		UInstancedStaticMeshComponent* Black = nullptr;       // LED frame and legs
+		UInstancedStaticMeshComponent* Truss = nullptr;       // trusses, towers, follow spot platforms
+		UInstancedStaticMeshComponent* Brass = nullptr;       // stage front edge
+		UInstancedStaticMeshComponent* BrassDisc = nullptr;   // host mark (cylinder)
+		UInstancedStaticMeshComponent* DarkBrass = nullptr;   // step nosings, wall caps, pilasters
+		UInstancedStaticMeshComponent* SeatRed = nullptr;     // seat cushions + stems, guest chair blockout
+		UInstancedStaticMeshComponent* SeatBacks = nullptr;
+		UInstancedStaticMeshComponent* Seats = nullptr;       // SeatMesh
+		UInstancedStaticMeshComponent* GuestChair = nullptr;  // GuestChairMesh
+		UInstancedStaticMeshComponent* Fixtures = nullptr;    // moving head bodies (no shadow)
+		UInstancedStaticMeshComponent* FollowSpots = nullptr; // follow spot bodies (no shadow)
+	};
+
+	void BuildShell(const FBuildIsms& Isms);
+	void BuildStage(const FBuildIsms& Isms);
+	void BuildRig(const FBuildIsms& Isms);
+	void BuildSeats(const FBuildIsms& Isms);
+
+	void QueueInstance(UInstancedStaticMeshComponent* Ism, const FTransform& LocalTransform);
+	void AddBar(UInstancedStaticMeshComponent* Ism, const FVector& From, const FVector& To, float Thickness);
+	void AddTruss(UInstancedStaticMeshComponent* Ism, const FVector& From, const FVector& To);
+
+	float RowRadius(int32 Row) const;
+	float HalfArcRad() const;
+	/** Angle (rad) of the aisle centre line at Radius: just past the end of the seat arc. */
+	float AisleAngle(float Radius) const;
+	float TrussHeight() const;
+	FTransform ToWorld(const FTransform& LocalTransform) const;
+	FTransform GuestChairLocal() const;
+	FTransform HostMarkLocal() const;
+	FVector FollowSpotMountLocal(int32 Index) const;
+	TArray<FVector> TrussLightMountsLocal() const;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMesh> CubeMesh;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UStaticMesh> CylinderMesh;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> BasicShapeMaterial;
+
+	/** Instances gathered during Build() and added with one AddInstances call per component. */
+	TMap<UInstancedStaticMeshComponent*, TArray<FTransform>> PendingInstances;
+
+	/** Centroid of the seated heads, actor space. */
+	FVector AudienceCentreLocal = FVector::ZeroVector;
+
 	UPROPERTY(VisibleAnywhere, Category = "Arena")
 	TObjectPtr<USceneComponent> Root;
 
